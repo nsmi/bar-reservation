@@ -65,10 +65,12 @@ function handleCreateReservation_(body) {
   // 1. 本人確認（ロック外で実施: 外部通信中にロックを握らない）
   var auth = verifyLineIdToken_(body.idToken, config.LINE_CHANNEL_ID, now_());
   if (!auth.ok) {
+    var reason = auth.code + (auth.detail ? ' (' + auth.detail + ')' : '');
+    console.warn('LINE auth rejected: ' + reason);
     if (auth.code !== 'AUTH_UNAVAILABLE') {
       safeAppendAudit_({
         role: 'line_customer', action: 'reservation.create', targetType: 'reservation',
-        reason: auth.code, requestId: body.requestId, result: 'denied'
+        reason: reason, requestId: body.requestId, result: 'denied'
       });
     }
     return errorResponse_(auth.code);

@@ -57,3 +57,17 @@ test('aud / iss / exp / sub が不正なら拒否', () => {
     assert.equal(c.gas.verifyLineIdToken_('a.b.c', CHANNEL_ID, now).code, 'AUTH_INVALID', JSON.stringify(claims));
   }
 });
+
+test('拒否理由(detail)を返す（トークン本体は含めない）', () => {
+  const c = createGasContext({
+    fetchHandler: () => ({
+      getResponseCode: () => 400,
+      getContentText: () => JSON.stringify({ error: 'invalid_request', error_description: 'IdToken expired.' })
+    })
+  });
+  const r = c.gas.verifyLineIdToken_('a.b.c', CHANNEL_ID, now);
+  assert.equal(r.code, 'AUTH_INVALID');
+  assert.equal(r.detail, 'line_400: IdToken expired.');
+  const c2 = ctxWithResponse(200, { ...goodClaims(), aud: '999' });
+  assert.equal(c2.gas.verifyLineIdToken_('a.b.c', CHANNEL_ID, now).detail, 'aud_mismatch');
+});

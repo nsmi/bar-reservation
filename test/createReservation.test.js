@@ -132,6 +132,7 @@ test('IDトークンなし・不正トークンでは保存されない', () => 
   assert.equal(c.rows('Customers').length, 0);
   const denied = c.rows('AuditLogs').filter((l) => l.result === 'denied');
   assert.equal(denied.length, 2);
+  assert.equal(denied[1].reason, 'AUTH_INVALID (line_400: Invalid IdToken.)');
 });
 
 test('IDトークン・LINEユーザーIDがログやシートに残らない（Customers以外）', () => {

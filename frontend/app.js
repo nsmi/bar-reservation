@@ -283,7 +283,7 @@
         return;
       case 'AUTH_REQUIRED':
       case 'AUTH_INVALID':
-        setStatus('LINEの認証の有効期限が切れました。画面を閉じて、もう一度開き直してください。', true);
+        setStatus('LINEの認証を確認できませんでした。画面を閉じて、もう一度開き直してください。（' + code + '）', true);
         return;
       case 'LIMIT_EXCEEDED':
         setStatus('ご予約中の件数が上限に達しています。変更はLINEのトークで店舗へご連絡ください。', true);
