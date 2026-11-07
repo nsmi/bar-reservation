@@ -1,0 +1,11 @@
+node_modules/
+# clasp: 環境ごとの scriptId と認証情報（コミットしない）
+.clasp.json
+.clasprc.json
+# 秘密情報・ローカル設定
+.env
+.env.*
+*.local.*
+# 書き出したデータ（顧客情報を含む可能性）
+exports/
+*.csv

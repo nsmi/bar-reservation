@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>ご予約</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <h1 class="title"><span id="shop-name"></span> ご予約</h1>
+
+    <section id="view-loading" class="card center">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>読み込み中…</p>
+    </section>
+
+    <section id="view-error" class="card" hidden>
+      <p id="error-message" class="error-text" role="alert"></p>
+    </section>
+
+    <section id="view-form" class="card" hidden>
+      <form id="reservation-form" novalidate>
+        <div class="field">
+          <label for="nickname">お名前（あだ名）<span class="req">必須</span></label>
+          <input id="nickname" name="nickname" type="text" autocomplete="nickname" required>
+          <p class="hint">本名でなくてかまいません。</p>
+          <p class="field-error" data-for="nickname"></p>
+        </div>
+
+        <div class="field">
+          <label for="visit-date">ご来店日<span class="req">必須</span></label>
+          <input id="visit-date" name="visit-date" type="date" required>
+          <p class="field-error" data-for="scheduledAt"></p>
+        </div>
+
+        <div class="field">
+          <label for="visit-time">ご来店時刻<span class="req">必須</span></label>
+          <select id="visit-time" name="visit-time" required></select>
+          <p class="hint">「翌」はご来店日の深夜（日付が変わった後）です。</p>
+        </div>
+
+        <div class="field">
+          <label for="guests">人数<span class="req">必須</span></label>
+          <select id="guests" name="guests" required></select>
+          <p class="field-error" data-for="numberOfGuests"></p>
+        </div>
+
+        <div class="field" id="cast-field">
+          <label for="requested-cast">希望キャスト（任意）</label>
+          <select id="requested-cast" name="requested-cast"></select>
+          <p class="field-error" data-for="requestedCastId"></p>
+        </div>
+
+        <div class="field">
+          <label for="note">備考（任意）</label>
+          <textarea id="note" name="note" rows="3"></textarea>
+          <p class="field-error" data-for="note"></p>
+        </div>
+
+        <button type="submit" class="btn primary">確認へ進む</button>
+      </form>
+    </section>
+
+    <section id="view-confirm" class="card" hidden>
+      <h2>ご予約内容の確認</h2>
+      <dl class="summary">
+        <dt>お名前</dt><dd id="confirm-nickname"></dd>
+        <dt>日時</dt><dd id="confirm-datetime"></dd>
+        <dt>人数</dt><dd id="confirm-guests"></dd>
+        <dt>希望キャスト</dt><dd id="confirm-cast"></dd>
+        <dt>備考</dt><dd id="confirm-note" class="pre"></dd>
+      </dl>
+      <p id="submit-status" class="status" role="status" aria-live="polite"></p>
+      <button type="button" id="btn-submit" class="btn primary">予約を確定する</button>
+      <button type="button" id="btn-back" class="btn">戻って修正する</button>
+    </section>
+
+    <section id="view-done" class="card" hidden>
+      <h2>予約を受け付けました</h2>
+      <dl class="summary">
+        <dt>予約番号</dt><dd id="done-id" class="mono"></dd>
+        <dt>日時</dt><dd id="done-datetime"></dd>
+        <dt>人数</dt><dd id="done-guests"></dd>
+        <dt>お名前</dt><dd id="done-nickname"></dd>
+      </dl>
+      <p class="hint">予約番号はこの画面のスクリーンショットなどで控えてください。</p>
+      <p class="notice">ご予約の変更・キャンセルは、LINEのトーク画面から店舗へメッセージでご連絡ください。</p>
+      <button type="button" id="btn-close" class="btn">閉じる</button>
+    </section>
+  </main>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" charset="utf-8"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

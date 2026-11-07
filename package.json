@@ -1,0 +1,14 @@
+{
+  "name": "bar-line-reservation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LINE予約・呼び売上管理ツール 試験導入版",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "push": "clasp push",
+    "deploy": "clasp deploy"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
