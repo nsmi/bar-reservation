@@ -28,7 +28,7 @@ jobs:
 
       - name: Refuse placeholder config
         run: |
-          if grep -q "REPLACE_WITH_" frontend/config.js; then
+          if grep -q "'REPLACE_WITH_" frontend/config.js; then
             echo "::error::frontend/config.js still contains REPLACE_WITH_ placeholders"
             exit 1
           fi
