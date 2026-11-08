@@ -3,6 +3,7 @@
  * 電話番号・本名などは保存しない。
  */
 function findCustomerByLineUserId_(customers, lineUserId) {
+  if (!lineUserId) return null; // 店舗側で登録した顧客は line_user_id が空
   for (var i = 0; i < customers.length; i++) {
     if (customers[i].line_user_id === lineUserId) return customers[i];
   }

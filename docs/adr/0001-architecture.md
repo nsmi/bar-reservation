@@ -57,7 +57,9 @@ GAS は OPTIONS（CORS プリフライト）に応答できない。`Content-Typ
 |---|---|
 | `Reservations` に `request_id`、`nickname` 列を追加 | 二重登録防止の原子性 / 予約ごとのあだ名を保持（顧客のあだ名は初回登録時の値） |
 | `Users` から `pin_salt`、`pin_hash` を削除 | 店舗ユーザーはアカウント方式に決定したため |
-| `Visits`、`Transactions` シートは未作成 | フェーズ2で追加 |
+| `Visits` に `request_id`・`business_date`・`updated_at`・`version` を追加 | 二重登録防止 / 営業日集計 / 判定変更の同時編集検出 |
+| `Transactions` に `request_id`・`note` を追加。`payout_rate` は%の整数 | 二重登録防止 / 円未満を整数演算で正確に切り捨てるため |
+| `Invites` シートを追加 | 店舗ユーザーの LINE 紐づけ（ADR-0002）。招待コードはハッシュのみ保存 |
 | タイムゾーンは設定値ではなく JST(+9) 固定 | 日本の1店舗のみ。夏時間なし |
 
 ## 仮定（セキュリティに影響しないため仮置き。変更可）

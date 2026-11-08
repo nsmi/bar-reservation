@@ -18,6 +18,19 @@ var SCHEMAS = {
     'source', 'created_by_user_id', 'assigned_cast_id', 'requested_cast_id', 'created_at',
     'status', 'note', 'version'
   ],
+  Visits: [
+    'visit_id', 'request_id', 'business_date', 'customer_id', 'reservation_id', 'checked_in_at',
+    'checked_in_by', 'invitation_type', 'attributed_cast_id', 'determination_reason',
+    'created_at', 'updated_at', 'version'
+  ],
+  Transactions: [
+    'transaction_id', 'request_id', 'visit_id', 'business_date', 'total_amount', 'cast_drink_amount',
+    'payment_method', 'payout_rate', 'payout_amount', 'status', 'note', 'created_by', 'created_at',
+    'finalized_by', 'finalized_at'
+  ],
+  Invites: [
+    'invite_id', 'user_id', 'code_hash', 'expires_at', 'used_at', 'created_by', 'created_at'
+  ],
   AuditLogs: [
     'log_id', 'timestamp', 'user_id', 'role', 'action', 'target_type', 'target_id',
     'before_json', 'after_json', 'reason', 'request_id', 'result'
@@ -90,4 +103,34 @@ function appendRecord_(name, record) {
     return toCellValue_(record[key]);
   });
   t.sheet.appendRow(row);
+}
+
+/**
+ * keyField = keyValue の行の、changes に含まれる列だけを書き換える（ロック取得中に呼ぶこと）。
+ * 変更しない列は書き戻さない（テキスト扱いの値を数式として再解釈させないため）。
+ */
+function updateRecord_(name, keyField, keyValue, changes) {
+  var t = getTable_(name);
+  assertHeader_(t.sheet, t.schema, name);
+  var keyCol = t.schema.indexOf(keyField);
+  if (keyCol < 0) throw new Error('Unknown key field: ' + keyField);
+  var lastRow = t.sheet.getLastRow();
+  if (lastRow < 2) throw new Error('Record not found: ' + name + ' ' + keyValue);
+  var keys = t.sheet.getRange(2, keyCol + 1, lastRow - 1, 1).getValues();
+  var rowIndex = -1;
+  for (var i = 0; i < keys.length; i++) {
+    if (fromCellValue_(keys[i][0]) === keyValue) { rowIndex = i + 2; break; }
+  }
+  if (rowIndex < 0) throw new Error('Record not found: ' + name + ' ' + keyValue);
+  Object.keys(changes).forEach(function (field) {
+    var col = t.schema.indexOf(field);
+    if (col < 0) throw new Error('Unknown field: ' + field);
+    t.sheet.getRange(rowIndex, col + 1).setValue(toCellValue_(changes[field]));
+  });
+}
+
+function indexBy_(records, field) {
+  var map = {};
+  records.forEach(function (r) { map[r[field]] = r; });
+  return map;
 }

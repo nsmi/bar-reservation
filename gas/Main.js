@@ -42,6 +42,9 @@ function handleRequest_(e) {
     }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return errorResponse_('INVALID_REQUEST');
 
+    if (typeof body.action === 'string' && body.action.indexOf('staff.') === 0) {
+      return handleStaffRequest_(body);
+    }
     switch (body.action) {
       case 'getFormOptions':
         return handleGetFormOptions_();

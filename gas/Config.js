@@ -2,7 +2,9 @@
  * 設定値。秘密情報・環境依存値は Script Properties で管理し、コードに書かない。
  *
  * 必須 Script Properties:
- *   LINE_CHANNEL_ID  LINEミニアプリ チャネルのチャネルID（数字）
+ *   LINE_CHANNEL_ID        顧客用 LINEミニアプリ チャネルのチャネルID（数字）
+ * 店舗用画面を使う場合に必須:
+ *   LINE_STAFF_CHANNEL_ID  店舗用 LINEミニアプリ チャネルのチャネルID（数字）
  * 任意（未設定時は CONFIG_DEFAULTS を使用）:
  *   BUSINESS_DAY_CUTOFF_HOUR など下記のキー
  */
@@ -15,7 +17,14 @@ var CONFIG_DEFAULTS = {
   RESERVATION_TIME_STEP_MINUTES: 15,
   NICKNAME_MAX_LENGTH: 20,
   NOTE_MAX_LENGTH: 200,
-  LOCK_WAIT_MS: 10000
+  LOCK_WAIT_MS: 10000,
+  // 呼び判定: 予約登録から来店登録までがこの分数未満なら要確認
+  REVIEW_THRESHOLD_MINUTES: 30,
+  // 日払い率（%）。会計総額（キャストドリンク代を含む）に掛ける
+  PAYOUT_RATE_PERCENT: 10,
+  AMOUNT_MAX: 10000000,
+  INVITE_TTL_HOURS: 24,
+  DISPLAY_NAME_MAX_LENGTH: 20
 };
 
 function getConfig_() {
@@ -39,5 +48,15 @@ function getConfig_() {
     throw new Error('CONFIG: LINE_CHANNEL_ID is missing or invalid');
   }
   cfg.LINE_CHANNEL_ID = String(channelId);
+
+  var staffChannelId = props.LINE_STAFF_CHANNEL_ID;
+  if (staffChannelId && !/^\d{6,20}$/.test(String(staffChannelId))) {
+    throw new Error('CONFIG: LINE_STAFF_CHANNEL_ID is invalid');
+  }
+  if (staffChannelId && String(staffChannelId) === cfg.LINE_CHANNEL_ID) {
+    // 顧客用と同じチャネルだと、顧客向け画面のトークンで店舗APIを呼べてしまう
+    throw new Error('CONFIG: LINE_STAFF_CHANNEL_ID must differ from LINE_CHANNEL_ID');
+  }
+  cfg.LINE_STAFF_CHANNEL_ID = staffChannelId ? String(staffChannelId) : '';
   return cfg;
 }

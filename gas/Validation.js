@@ -3,39 +3,49 @@
  */
 var REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var USER_ID_PATTERN = /^USR-[0-9A-Za-z_-]{1,32}$/;
-var CONTROL_CHARS = new RegExp('[\u0000-\u001F\u007F-\u009F\u2028\u2029]');
-var CONTROL_CHARS_EXCEPT_NEWLINE = new RegExp('[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u2028\u2029]');
+var DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+var CONTROL_CHARS = new RegExp('[\u0000-\u001F\u007F-\u009F  ]');
+var CONTROL_CHARS_EXCEPT_NEWLINE = new RegExp('[\u0000-\u0009\u000B-\u001F\u007F-\u009F  ]');
 
 function isValidRequestId_(v) {
   return typeof v === 'string' && REQUEST_ID_PATTERN.test(v);
+}
+
+function isValidDateString_(v) {
+  return typeof v === 'string' && DATE_PATTERN.test(v) && jstLocalToDate_(v, '00:00') !== null;
 }
 
 function charLength_(s) {
   return Array.from(s).length;
 }
 
+/** 1行の短い文字列（あだ名・表示名など）。@return {{value: string, error: string|null}} */
+function validateShortText_(v, maxLength) {
+  var s = typeof v === 'string' ? v.normalize('NFC').trim() : '';
+  if (s === '') return { value: s, error: 'required' };
+  if (charLength_(s) > maxLength) return { value: s, error: 'too_long' };
+  if (CONTROL_CHARS.test(s)) return { value: s, error: 'invalid_chars' };
+  return { value: s, error: null };
+}
+
+/** 任意の複数行テキスト（備考・理由など）。required=true なら空を拒否。 */
+function validateNoteText_(v, maxLength, required) {
+  if (v === undefined || v === null || v === '') {
+    return { value: '', error: required ? 'required' : null };
+  }
+  if (typeof v !== 'string') return { value: '', error: 'invalid' };
+  var s = v.normalize('NFC').replace(/\r\n?/g, '\n').trim();
+  if (required && s === '') return { value: s, error: 'required' };
+  if (charLength_(s) > maxLength) return { value: s, error: 'too_long' };
+  if (CONTROL_CHARS_EXCEPT_NEWLINE.test(s)) return { value: s, error: 'invalid_chars' };
+  return { value: s, error: null };
+}
+
 /**
- * 顧客向け予約入力を検証する。
- * クライアントが送る未知のフィールド（lineUserId、createdAt、assignedCastId など）は一切読まない。
- * @return {{ok: true, value: Object} | {ok: false, errors: Object}}
+ * 予約に共通する「日時・人数・備考」を検証し、errors に書き込む。
+ * @return {{scheduledAt: Date|null, numberOfGuests: number, note: string}}
  */
-function validateReservationInput_(input, now, config) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return { ok: false, errors: { reservation: 'required' } };
-  }
-  var errors = {};
-
-  // あだ名
-  var nickname = typeof input.nickname === 'string' ? input.nickname.normalize('NFC').trim() : '';
-  if (nickname === '') {
-    errors.nickname = 'required';
-  } else if (charLength_(nickname) > config.NICKNAME_MAX_LENGTH) {
-    errors.nickname = 'too_long';
-  } else if (CONTROL_CHARS.test(nickname)) {
-    errors.nickname = 'invalid_chars';
-  }
-
-  // 来店予定日時（日本時間）
+function validateScheduleFields_(input, now, config, errors) {
   var scheduledAt = null;
   if (typeof input.date !== 'string' || typeof input.time !== 'string') {
     errors.scheduledAt = 'required';
@@ -53,13 +63,34 @@ function validateReservationInput_(input, now, config) {
     }
   }
 
-  // 人数
   var guests = input.numberOfGuests;
   if (typeof guests !== 'number' || !Number.isInteger(guests)) {
     errors.numberOfGuests = 'invalid';
   } else if (guests < config.RESERVATION_MIN_GUESTS || guests > config.RESERVATION_MAX_GUESTS) {
     errors.numberOfGuests = 'out_of_range';
   }
+
+  var note = validateNoteText_(input.note, config.NOTE_MAX_LENGTH, false);
+  if (note.error) errors.note = note.error;
+
+  return { scheduledAt: scheduledAt, numberOfGuests: guests, note: note.value };
+}
+
+/**
+ * 顧客向け予約入力を検証する。
+ * クライアントが送る未知のフィールド（lineUserId、createdAt、assignedCastId など）は一切読まない。
+ * @return {{ok: true, value: Object} | {ok: false, errors: Object}}
+ */
+function validateReservationInput_(input, now, config) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, errors: { reservation: 'required' } };
+  }
+  var errors = {};
+
+  var nickname = validateShortText_(input.nickname, config.NICKNAME_MAX_LENGTH);
+  if (nickname.error) errors.nickname = nickname.error;
+
+  var schedule = validateScheduleFields_(input, now, config, errors);
 
   // 希望キャスト（任意）。存在確認はロック内で Users シートと照合する。
   var requestedCastId = '';
@@ -72,30 +103,15 @@ function validateReservationInput_(input, now, config) {
     }
   }
 
-  // 備考（任意）
-  var note = '';
-  if (input.note !== undefined && input.note !== null) {
-    if (typeof input.note !== 'string') {
-      errors.note = 'invalid';
-    } else {
-      note = input.note.normalize('NFC').replace(/\r\n?/g, '\n').trim();
-      if (charLength_(note) > config.NOTE_MAX_LENGTH) {
-        errors.note = 'too_long';
-      } else if (CONTROL_CHARS_EXCEPT_NEWLINE.test(note)) {
-        errors.note = 'invalid_chars';
-      }
-    }
-  }
-
   if (Object.keys(errors).length > 0) return { ok: false, errors: errors };
   return {
     ok: true,
     value: {
-      nickname: nickname,
-      scheduledAt: scheduledAt,
-      numberOfGuests: guests,
+      nickname: nickname.value,
+      scheduledAt: schedule.scheduledAt,
+      numberOfGuests: schedule.numberOfGuests,
       requestedCastId: requestedCastId,
-      note: note
+      note: schedule.note
     }
   };
 }

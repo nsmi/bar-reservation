@@ -44,6 +44,12 @@ class FakeRange {
     });
     return this;
   }
+  setValue(v) {
+    const idx = this.row - 1;
+    this.sheet.rows[idx] = this.sheet.rows[idx] || [];
+    this.sheet.rows[idx][this.col - 1] = storeAppendedValue(v);
+    return this;
+  }
   setFontWeight() { return this; }
 }
 
@@ -64,6 +70,7 @@ class FakeSpreadsheet {
 
 const DEFAULT_NOW = new Date('2026-11-07T12:00:00+09:00');
 const CHANNEL_ID = '1234567890';
+const STAFF_CHANNEL_ID = '2234567890';
 
 /**
  * LINE の verify エンドポイントのフェイク。tokens: { [idToken]: { sub, exp?, aud?, iss? } }
@@ -73,6 +80,7 @@ function makeLineVerifyHandler(tokens, getNow) {
     if (url !== 'https://api.line.me/oauth2/v2.1/verify') throw new Error('unexpected url ' + url);
     const t = tokens[opts.payload.id_token];
     if (!t || String(opts.payload.client_id) !== (t.aud || CHANNEL_ID)) {
+      // LINE は client_id と aud が一致しないトークンを 400 で拒否する
       return response(400, { error: 'invalid_request', error_description: 'Invalid IdToken.' });
     }
     return response(200, {
@@ -93,7 +101,7 @@ function response(status, body) {
 function createGasContext(options = {}) {
   let now = options.now || DEFAULT_NOW;
   const getNow = () => new Date(now.getTime());
-  const properties = Object.assign({ LINE_CHANNEL_ID: CHANNEL_ID }, options.properties || {});
+  const properties = Object.assign({ LINE_CHANNEL_ID: CHANNEL_ID, LINE_STAFF_CHANNEL_ID: STAFF_CHANNEL_ID }, options.properties || {});
   const ss = new FakeSpreadsheet();
   const fetchCalls = [];
   const lockState = { available: true, held: 0 };
@@ -110,6 +118,7 @@ function createGasContext(options = {}) {
     LockService: {
       getScriptLock: () => ({
         tryLock: () => { if (!lockState.available) return false; lockState.held++; return true; },
+        waitLock: () => { if (!lockState.available) throw new Error('lock timeout'); lockState.held++; },
         releaseLock: () => { lockState.held = Math.max(0, lockState.held - 1); }
       })
     },
@@ -122,7 +131,13 @@ function createGasContext(options = {}) {
     UrlFetchApp: {
       fetch: (url, opts) => { fetchCalls.push({ url, opts }); return fetchHandler(url, opts); }
     },
-    Utilities: { getUuid: () => crypto.randomUUID() },
+    Utilities: {
+      getUuid: () => crypto.randomUUID(),
+      DigestAlgorithm: { SHA_256: 'sha256' },
+      Charset: { UTF_8: 'utf8' },
+      // GAS と同じく符号付きバイト配列を返す
+      computeDigest: (alg, value) => Array.from(crypto.createHash(alg).update(value, 'utf8').digest()).map((b) => (b > 127 ? b - 256 : b))
+    },
     ContentService: {
       MimeType: { JSON: 'application/json' },
       createTextOutput(content) {
@@ -166,4 +181,4 @@ function createGasContext(options = {}) {
 /** vm 内で生成されたオブジェクトを通常のオブジェクトに変換（deepStrictEqual 用） */
 const plain = (x) => JSON.parse(JSON.stringify(x));
 
-module.exports = { createGasContext, makeLineVerifyHandler, plain, CHANNEL_ID, DEFAULT_NOW };
+module.exports = { createGasContext, makeLineVerifyHandler, plain, CHANNEL_ID, STAFF_CHANNEL_ID, DEFAULT_NOW };
