@@ -4,8 +4,8 @@
 var REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var USER_ID_PATTERN = /^USR-[0-9A-Za-z_-]{1,32}$/;
 var DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-var CONTROL_CHARS = new RegExp('[\u0000-\u001F\u007F-\u009F  ]');
-var CONTROL_CHARS_EXCEPT_NEWLINE = new RegExp('[\u0000-\u0009\u000B-\u001F\u007F-\u009F  ]');
+var CONTROL_CHARS = new RegExp('[\u0000-\u001F\u007F-\u009F\u2028\u2029]');
+var CONTROL_CHARS_EXCEPT_NEWLINE = new RegExp('[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u2028\u2029]');
 
 function isValidRequestId_(v) {
   return typeof v === 'string' && REQUEST_ID_PATTERN.test(v);
