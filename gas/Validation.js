@@ -57,9 +57,12 @@ function validateScheduleFields_(input, now, config, errors) {
       errors.scheduledAt = 'invalid_step';
     } else if (scheduledAt.getTime() <= now.getTime()) {
       errors.scheduledAt = 'past';
-    } else if (scheduledAt.getTime() > now.getTime() + (config.RESERVATION_MAX_DAYS_AHEAD + 1) * 86400000) {
-      // +1日: 「翌1:00」のような深夜帯の予約を最終日にも許容するため
+    } else if (businessDateOf_(scheduledAt, config.BUSINESS_DAY_CUTOFF_HOUR) >
+        businessDateOf_(new Date(now.getTime() + config.RESERVATION_MAX_DAYS_AHEAD * 86400000), config.BUSINESS_DAY_CUTOFF_HOUR)) {
+      // 営業日で比較する（最終日の「翌1:00」も受け付ける。日本時間は夏時間がないので日数×24時間でよい）
       errors.scheduledAt = 'too_far';
+    } else if (!isWithinReservationHours_(input.time, config)) {
+      errors.scheduledAt = 'outside_hours';
     }
   }
 

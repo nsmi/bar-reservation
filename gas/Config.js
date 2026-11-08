@@ -8,6 +8,8 @@
  * 任意（未設定時は CONFIG_DEFAULTS を使用）:
  *   BUSINESS_DAY_CUTOFF_HOUR など下記のキー
  */
+var TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 var CONFIG_DEFAULTS = {
   BUSINESS_DAY_CUTOFF_HOUR: 6,
   RESERVATION_MAX_DAYS_AHEAD: 60,
@@ -15,6 +17,11 @@ var CONFIG_DEFAULTS = {
   RESERVATION_MAX_GUESTS: 10,
   RESERVATION_MAX_ACTIVE_PER_CUSTOMER: 3,
   RESERVATION_TIME_STEP_MINUTES: 15,
+  // 予約受付時間（HH:MM）。CLOSE が OPEN より前なら日付をまたぐ（例: 18:00〜翌04:00）。
+  // オーナーが店舗用画面の「設定」タブで変更できる（gas/Settings.js）
+  RESERVATION_OPEN_TIME: '18:00',
+  RESERVATION_CLOSE_TIME: '04:00',
+  RESERVATION_DEFAULT_TIME: '21:00',
   NICKNAME_MAX_LENGTH: 20,
   NOTE_MAX_LENGTH: 200,
   LOCK_WAIT_MS: 10000,
@@ -34,6 +41,11 @@ function getConfig_() {
     var raw = props[key];
     if (raw === undefined || raw === null || raw === '') {
       cfg[key] = CONFIG_DEFAULTS[key];
+      return;
+    }
+    if (typeof CONFIG_DEFAULTS[key] === 'string') {
+      if (!TIME_OF_DAY_PATTERN.test(String(raw))) throw new Error('CONFIG: ' + key + ' is not HH:MM');
+      cfg[key] = String(raw);
       return;
     }
     var n = Number(raw);

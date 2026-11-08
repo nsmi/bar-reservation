@@ -6,9 +6,6 @@
 window.APP_CONFIG = Object.freeze({
   LIFF_ID: '2012448458-QHDMgaU1',
   API_URL: 'https://script.google.com/macros/s/AKfycbzho1RHsVS2p2AvTP0oCLBXhyJGSbPra8iN1B9U-fTBg4dQmYgI-TEqgd5-r0dgz9fF/exec',
-  SHOP_NAME: 'Barサンドラ伊豆',
-  // 予約時刻の選択肢。END が START 以前なら日付をまたぐ（例: 18:00〜翌4:00）
-  TIME_SLOT_START: '18:00',
-  TIME_SLOT_END: '04:00',
-  DEFAULT_TIME: '21:00'
+  SHOP_NAME: 'Barサンドラ伊豆'
+  // 予約の受付時間・人数などは、店舗用画面の「設定」タブで変更する（サーバーから取得）
 });

@@ -48,6 +48,9 @@ function handleGetFormOptions_() {
       maxGuests: config.RESERVATION_MAX_GUESTS,
       maxDaysAhead: config.RESERVATION_MAX_DAYS_AHEAD,
       timeStepMinutes: config.RESERVATION_TIME_STEP_MINUTES,
+      openTime: config.RESERVATION_OPEN_TIME,
+      closeTime: config.RESERVATION_CLOSE_TIME,
+      defaultTime: config.RESERVATION_DEFAULT_TIME,
       nicknameMaxLength: config.NICKNAME_MAX_LENGTH,
       noteMaxLength: config.NOTE_MAX_LENGTH,
       businessDayCutoffHour: config.BUSINESS_DAY_CUTOFF_HOUR

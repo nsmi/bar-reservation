@@ -25,6 +25,9 @@ function staffActions_() {
     'staff.listUsers':         { roles: OWNER,       write: false, handler: staffListUsers_ },
     'staff.createUser':        { roles: OWNER,       write: true,  handler: staffCreateUser_ },
     'staff.setUserActive':     { roles: OWNER,       write: true,  handler: staffSetUserActive_ },
+    'staff.setUserRole':       { roles: OWNER,       write: true,  handler: staffSetUserRole_ },
+    'staff.getSettings':       { roles: OWNER,       write: false, handler: staffGetSettings_ },
+    'staff.updateSettings':    { roles: OWNER,       write: true,  handler: staffUpdateSettings_ },
     'staff.issueInvite':       { roles: OWNER,       write: true,  handler: staffIssueInvite_ }
   };
 }
@@ -107,6 +110,9 @@ function staffMe_(ctx) {
       maxGuests: c.RESERVATION_MAX_GUESTS,
       maxDaysAhead: c.RESERVATION_MAX_DAYS_AHEAD,
       timeStepMinutes: c.RESERVATION_TIME_STEP_MINUTES,
+      openTime: c.RESERVATION_OPEN_TIME,
+      closeTime: c.RESERVATION_CLOSE_TIME,
+      defaultTime: c.RESERVATION_DEFAULT_TIME,
       nicknameMaxLength: c.NICKNAME_MAX_LENGTH,
       noteMaxLength: c.NOTE_MAX_LENGTH,
       displayNameMaxLength: c.DISPLAY_NAME_MAX_LENGTH,

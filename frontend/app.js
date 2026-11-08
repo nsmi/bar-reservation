@@ -69,15 +69,19 @@
     return p[0] * 60 + p[1];
   }
 
-  /** 例: 18:00〜翌04:00 を step 分刻みで生成 */
-  function buildTimeSlots(start, end, step) {
-    var s = toMinutes(start);
-    var e = toMinutes(end);
-    if (e <= s) e += 1440;
+  /**
+   * 受付開始〜最終受付を step 分刻みで生成（例: 18:00〜翌04:00）。
+   * 営業日の切り替え時刻より前の時刻は、来店日の翌日（「翌」）として扱う。
+   */
+  function buildTimeSlots(start, end, step, cutoffHour) {
+    var cut = cutoffHour * 60;
+    var rel = function (m) { return (m - cut + 1440) % 1440; };
+    var s = rel(toMinutes(start));
+    var e = rel(toMinutes(end));
     var slots = [];
-    for (var m = s; m <= e; m += step) {
-      var dayOffset = m >= 1440 ? 1 : 0;
-      var mm = m % 1440;
+    for (var r = s; r <= e; r += step) {
+      var mm = (r + cut) % 1440;
+      var dayOffset = mm < cut ? 1 : 0;
       var time = pad2(Math.floor(mm / 60)) + ':' + pad2(mm % 60);
       slots.push({ value: dayOffset + '|' + time, time: time, dayOffset: dayOffset, label: (dayOffset ? '翌' : '') + time });
     }
@@ -132,10 +136,10 @@
 
     var timeSelect = $('visit-time');
     timeSelect.textContent = '';
-    buildTimeSlots(cfg.TIME_SLOT_START || '18:00', cfg.TIME_SLOT_END || '04:00', c.timeStepMinutes)
+    buildTimeSlots(c.openTime, c.closeTime, c.timeStepMinutes, c.businessDayCutoffHour)
       .forEach(function (s) {
         var o = option(s.value, s.label);
-        if (s.time === cfg.DEFAULT_TIME && s.dayOffset === 0) o.selected = true;
+        if (s.time === c.defaultTime) o.selected = true;
         timeSelect.appendChild(o);
       });
 

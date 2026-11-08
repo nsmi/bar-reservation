@@ -125,7 +125,11 @@ function createGasContext(options = {}) {
     PropertiesService: {
       getScriptProperties: () => ({
         getProperties: () => Object.assign({}, properties),
-        getProperty: (k) => (k in properties ? properties[k] : null)
+        getProperty: (k) => (k in properties ? properties[k] : null),
+        setProperties: (obj, deleteAllOthers) => {
+          if (deleteAllOthers) throw new Error('deleteAllOthers is not expected');
+          Object.keys(obj).forEach((k) => { properties[k] = String(obj[k]); });
+        }
       })
     },
     UrlFetchApp: {

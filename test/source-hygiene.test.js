@@ -22,3 +22,10 @@ test('ソースに生の行区切り文字・制御文字・BOM が含まれな�
     }
   }
 });
+
+test('画面側の JS が構文エラーなく読み込める', () => {
+  for (const f of ['frontend/app.js', 'frontend/config.js', 'frontend/admin/admin.js', 'frontend/admin/config.js']) {
+    const text = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    assert.doesNotThrow(() => new Function(text), f);
+  }
+});

@@ -456,3 +456,29 @@ function staffSetUserActive_(ctx) {
   });
   return { ok: true };
 }
+
+/**
+ * ロール変更（オーナーのみ）。
+ * - 自分自身のロールは変えられない（操作者が owner のまま残るので、オーナーが0人になることもない）。
+ * - expectedRole が現在のロールと違えば、他の人が先に変更したとみなして拒否する。
+ * - 判定済みの来店・計上済みの会計は変わらない。来店前の呼び予約は、担当がキャストでなくなると
+ *   来店登録時に要確認（cast_inactive）になる。
+ */
+function staffSetUserRole_(ctx) {
+  var body = ctx.body;
+  if (STAFF_ROLES.indexOf(body.role) < 0) return errorResponse_('VALIDATION_ERROR', { role: 'invalid' });
+  if (body.userId === ctx.user.user_id) return errorResponse_('VALIDATION_ERROR', { userId: 'self' });
+  var target = findUser_(readAll_('Users'), body.userId);
+  if (!target) return errorResponse_('NOT_FOUND');
+  if (body.expectedRole !== target.role) return errorResponse_('VERSION_CONFLICT');
+  if (body.role === target.role) return { ok: true, user: toStaffUser_(target) };
+
+  var nowIso = formatJstIso_(now_());
+  updateRecord_('Users', 'user_id', target.user_id, { role: body.role, updated_at: nowIso });
+  appendAudit_({
+    userId: ctx.user.user_id, role: ctx.user.role, action: 'user.role_change', targetType: 'user',
+    targetId: target.user_id, before: { role: target.role }, after: { role: body.role }, result: 'success'
+  });
+  var updated = Object.assign({}, target, { role: body.role, updated_at: nowIso });
+  return { ok: true, user: toStaffUser_(updated) };
+}

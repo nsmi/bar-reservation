@@ -14,7 +14,8 @@
 フェーズ2（店舗用画面 `frontend/admin/`、LINEアカウント認証 → [ADR-0002](docs/adr/0002-staff-auth-line-account.md)）
 - 招待コードによる店舗ユーザー登録、ロール別の権限判定（owner / staff / cast）
 - 予約一覧、キャストの呼び予約登録、来店登録と呼び判定、会計登録、日次集計・要確認一覧
-- オーナーによる判定変更（理由必須）、ユーザー管理
+- オーナーによる判定変更（理由必須）、ユーザー管理（追加・無効化・ロール変更）
+- 予約の受付設定（受付時間・時間の間隔・人数・何日先まで など）をオーナーが画面から変更
 - 判定・集計・日払いのルールは [docs/business-rules.md](docs/business-rules.md)
 
 ## ディレクトリ
@@ -119,10 +120,13 @@ npm test
 店舗用: `NOT_REGISTERED` / `FORBIDDEN` / `NOT_FOUND` / `INVITE_INVALID` / `ALREADY_LINKED` / `RESERVATION_NOT_AVAILABLE` /
 `RESERVATION_NOT_TODAY` / `ALREADY_PAID` / `VERSION_CONFLICT`
 
+`VALIDATION_ERROR` の `scheduledAt` は `required` / `invalid` / `invalid_step` / `past` / `too_far` / `outside_hours`（受付時間外）
+
 ## 運用メモ
 
 - 予約の変更・キャンセルは、顧客から LINE チャットで連絡 → オーナーがシートで `status` 等を修正（フェーズ3で画面化）
 - いたずら予約をする顧客は `Customers.active` を `FALSE` にすると予約できなくなります
 - スタッフ・キャストの端末紛失や退職時は「ユーザー」タブで無効にすると、即座に操作できなくなります
 - 会計の入力ミスはフェーズ2では画面から訂正できません。オーナーがシートで直接修正する場合は、`AuditLogs` に理由を手で追記してください（訂正機能はフェーズ3）
+- 予約の受付時間などは店舗用画面の「設定」タブで変更します（Script Properties に保存されます。`LINE_CHANNEL_ID` などの手入力のプロパティは消えません）
 - GAS のコードを変更したら「デプロイを管理」で既存デプロイの新バージョンを作成（URL を変えないため）

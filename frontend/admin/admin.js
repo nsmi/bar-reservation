@@ -24,7 +24,7 @@
       reserved_after_checkin: '来店後に予約登録',
       reservation_modified: '予約が変更されている',
       registered_by_other: '担当キャスト以外が登録',
-      cast_inactive: '担当キャストが無効',
+      cast_inactive: '担当キャストが無効・キャストでない',
       self_checkin: '担当キャスト本人が来店登録',
       registered_shortly_before: '来店直前に予約登録',
       reservation_incomplete: '予約情報が不完全',
@@ -131,15 +131,17 @@
     return (dateOf(iso) > businessDate ? '翌' : '') + timeOf(iso);
   }
 
-  function buildTimeSlots(step) {
+  /** 予約時刻の選択肢。営業日の切り替え時刻より前は「翌」。設定はサーバー（staff.me）から取得 */
+  function buildTimeSlots(c) {
     var toMin = function (s) { var p = s.split(':').map(Number); return p[0] * 60 + p[1]; };
-    var s = toMin(cfg.TIME_SLOT_START || '18:00');
-    var e = toMin(cfg.TIME_SLOT_END || '04:00');
-    if (e <= s) e += 1440;
+    var cut = c.businessDayCutoffHour * 60;
+    var rel = function (m) { return (m - cut + 1440) % 1440; };
+    var s = rel(toMin(c.openTime));
+    var e = rel(toMin(c.closeTime));
     var out = [];
-    for (var m = s; m <= e; m += step) {
-      var off = m >= 1440 ? 1 : 0;
-      var mm = m % 1440;
+    for (var r = s; r <= e; r += c.timeStepMinutes) {
+      var mm = (r + cut) % 1440;
+      var off = mm < cut ? 1 : 0;
       var t = pad2(Math.floor(mm / 60)) + ':' + pad2(mm % 60);
       out.push({ value: off + '|' + t, label: (off ? '翌' : '') + t, time: t, off: off });
     }
@@ -290,8 +292,11 @@
     { id: 'visits', label: '来店', roles: ['owner', 'staff', 'cast'], render: renderVisits },
     { id: 'payments', label: '会計', roles: ['owner', 'staff'], render: renderPayments },
     { id: 'summary', label: '集計', roles: ['owner', 'staff', 'cast'], render: renderSummary },
-    { id: 'users', label: 'ユーザー', roles: ['owner'], render: renderUsers }
+    { id: 'users', label: 'ユーザー', roles: ['owner'], render: renderUsers },
+    { id: 'settings', label: '設定', roles: ['owner'], render: renderSettings }
   ];
+
+  var ROLE_OPTIONS = [{ value: 'cast', label: 'キャスト' }, { value: 'staff', label: 'スタッフ' }, { value: 'owner', label: 'オーナー' }];
 
   function renderTabs() {
     var nav = $('tabs');
@@ -349,7 +354,9 @@
 
     var picker = customerPicker();
     var date = h('input', { type: 'date', value: state.date < state.currentBusinessDate ? state.currentBusinessDate : state.date, min: state.currentBusinessDate, max: addDays(state.currentBusinessDate, c.maxDaysAhead) });
-    var time = selectEl(buildTimeSlots(c.timeStepMinutes), '0|' + (cfg.DEFAULT_TIME || '21:00'));
+    var slots = buildTimeSlots(c);
+    var defaultSlot = slots.filter(function (s) { return s.time === c.defaultTime; })[0];
+    var time = selectEl(slots, defaultSlot ? defaultSlot.value : '');
     var guestOpts = [];
     for (var g = c.minGuests; g <= c.maxGuests; g++) guestOpts.push({ value: String(g), label: g + '名' });
     var guests = selectEl(guestOpts, '1');
@@ -377,7 +384,7 @@
       }, {
         onError: function (err) {
           if (err.code === 'VALIDATION_ERROR' && err.fields && err.fields.scheduledAt) {
-            toast('日時を確認してください（過去の日時は登録できません）。', true);
+            toast('日時を確認してください（過去の日時や受付時間外は登録できません）。', true);
             holder.requestId = null;
             return true;
           }
@@ -646,6 +653,7 @@
       if (!res) return;
       var items = res.users.map(function (u) {
         var actions = h('div', { className: 'row' });
+        if (u.userId !== state.me.userId) actions.appendChild(roleChanger(u));
         if (u.userId !== state.me.userId) {
           var toggle = h('button', { type: 'button', className: 'btn small' }, u.active ? '無効にする' : '有効にする');
           toggle.addEventListener('click', function () {
@@ -681,6 +689,30 @@
     });
   }
 
+  /** ロール変更（自分以外）。サーバー側でもオーナーのみ・自分不可を判定する */
+  function roleChanger(u) {
+    var sel = selectEl(ROLE_OPTIONS, u.role);
+    var btn = h('button', { type: 'button', className: 'btn small' }, 'ロール変更');
+    btn.addEventListener('click', function () {
+      var next = sel.value;
+      if (next === u.role) { toast('変更後のロールを選んでください。', true); return; }
+      var msg = u.displayName + ' のロールを「' + LABELS.role[u.role] + '」から「' + LABELS.role[next] + '」に変更しますか？';
+      if (u.role === 'cast') {
+        msg += '\n\n・このキャストの来店前の呼び予約は、来店登録時に「要確認」になります。' +
+          '\n・お客様の予約画面の希望キャストに表示されなくなります。' +
+          '\n・判定済みの来店・会計は変わりません。';
+      }
+      if (next === 'owner') msg += '\n\nオーナーはすべての操作（ユーザー管理・判定変更・設定）ができます。';
+      if (!window.confirm(msg)) { sel.value = u.role; return; }
+      btn.disabled = true;
+      api('staff.setUserRole', { userId: u.userId, role: next, expectedRole: u.role }).then(function (r) {
+        btn.disabled = false;
+        if (r) { toast('ロールを変更しました。'); renderPanel(); } else { sel.value = u.role; }
+      });
+    });
+    return h('span', { className: 'role-changer' }, sel, btn);
+  }
+
   function renderUsersWithInvite(name, invite) {
     renderUsers($('panel'), inviteBox(name, invite));
     window.scrollTo(0, 0);
@@ -688,7 +720,7 @@
 
   function newUserForm() {
     var name = h('input', { type: 'text', maxlength: String(state.constraints.displayNameMaxLength), placeholder: '表示名（例: あや）' });
-    var role = selectEl([{ value: 'cast', label: 'キャスト' }, { value: 'staff', label: 'スタッフ' }, { value: 'owner', label: 'オーナー' }], 'cast');
+    var role = selectEl(ROLE_OPTIONS, 'cast');
     var submit = h('button', { type: 'button', className: 'btn primary' }, '追加して招待コードを発行');
     submit.addEventListener('click', function () {
       if (!name.value.trim()) { toast('表示名を入力してください。', true); return; }
@@ -700,6 +732,89 @@
       });
     });
     return card('ユーザーを追加', [fieldEl('表示名', name), fieldEl('権限', role), submit]);
+  }
+
+  // ---------- 設定（オーナーのみ） ----------
+
+  var SETTING_LABELS = {
+    openTime: '受付開始', closeTime: '最終受付', defaultTime: '最初に表示する時刻', timeStepMinutes: '時間の間隔',
+    maxDaysAhead: '何日先まで', minGuests: '最少人数', maxGuests: '最大人数', maxActivePerCustomer: '1人あたりの予約数'
+  };
+
+  function settingErrorMessage(code, cutoffHour) {
+    return {
+      invalid: '値が正しくありません。',
+      out_of_range: '範囲外です。',
+      invalid_step: '時間の間隔に合っていません（例: 30分間隔なら 00分か30分）。',
+      before_open: '受付開始より後で、営業日の切り替え（' + cutoffHour + ':00）より前にしてください。',
+      outside_hours: '受付開始〜最終受付の間にしてください。',
+      less_than_min: '最少人数以上にしてください。'
+    }[code] || '値を確認してください。';
+  }
+
+  function renderSettings(panel) {
+    api('staff.getSettings').then(function (res) {
+      if (!res) return;
+      var s = res.settings;
+      var cutoff = res.businessDayCutoffHour;
+      var num = function (v, min, max) {
+        return h('input', { type: 'number', inputmode: 'numeric', min: String(min), max: String(max), step: '1', value: String(v) });
+      };
+      var inputs = {
+        openTime: h('input', { type: 'time', step: '900', value: s.openTime }),
+        closeTime: h('input', { type: 'time', step: '900', value: s.closeTime }),
+        defaultTime: h('input', { type: 'time', step: '900', value: s.defaultTime }),
+        timeStepMinutes: selectEl([15, 30, 60].map(function (n) { return { value: String(n), label: n + '分ごと' }; }), String(s.timeStepMinutes)),
+        maxDaysAhead: num(s.maxDaysAhead, 0, 365),
+        minGuests: num(s.minGuests, 1, 50),
+        maxGuests: num(s.maxGuests, 1, 50),
+        maxActivePerCustomer: num(s.maxActivePerCustomer, 1, 20)
+      };
+      var errorsEl = h('ul', { className: 'form-errors', hidden: true });
+      var save = h('button', { type: 'button', className: 'btn primary' }, '保存する');
+
+      save.addEventListener('click', function () {
+        var next = {};
+        Object.keys(inputs).forEach(function (k) {
+          var v = inputs[k].value;
+          next[k] = /Time$/.test(k) ? v : (v === '' ? NaN : Number(v));
+        });
+        errorsEl.hidden = true;
+        errorsEl.textContent = '';
+        if (!window.confirm('予約の受付設定を保存しますか？\nお客様の予約画面にすぐ反映されます（登録済みの予約は変わりません）。')) return;
+        save.disabled = true;
+        api('staff.updateSettings', { settings: next, expected: s }, {
+          onError: function (err) {
+            if (err.code !== 'VALIDATION_ERROR' || !err.fields) return false;
+            Object.keys(err.fields).forEach(function (k) {
+              errorsEl.appendChild(h('li', null, (SETTING_LABELS[k] || k) + ': ' + settingErrorMessage(err.fields[k], cutoff)));
+            });
+            errorsEl.hidden = false;
+            return true;
+          }
+        }).then(function (r) {
+          save.disabled = false;
+          if (!r) return;
+          toast('保存しました。');
+          // 自分の画面の予約フォームにも新しい設定を反映する
+          api('staff.me').then(function (me) { if (me) state.constraints = me.constraints; renderPanel(); });
+        });
+      });
+
+      replacePanel(panel, [card('予約の受付設定', [
+        h('p', { className: 'hint' }, 'お客様の予約画面と、店舗用画面の予約登録の両方に使われます。営業日は ' + cutoff + ':00 で切り替わります。'),
+        fieldEl(SETTING_LABELS.openTime, inputs.openTime),
+        fieldEl(SETTING_LABELS.closeTime, inputs.closeTime, '日付をまたぐ場合は翌日の時刻を入れます（例: 翌4時なら 04:00）。'),
+        fieldEl(SETTING_LABELS.defaultTime, inputs.defaultTime, '予約画面を開いたときに最初に選ばれている時刻です。'),
+        fieldEl(SETTING_LABELS.timeStepMinutes, inputs.timeStepMinutes),
+        fieldEl(SETTING_LABELS.maxDaysAhead, inputs.maxDaysAhead, '0 にすると当日（現在の営業日）のみ受け付けます。'),
+        fieldEl(SETTING_LABELS.minGuests, inputs.minGuests),
+        fieldEl(SETTING_LABELS.maxGuests, inputs.maxGuests),
+        fieldEl(SETTING_LABELS.maxActivePerCustomer, inputs.maxActivePerCustomer, '来店前の予約を、お客様1人につき何件まで持てるか。'),
+        errorsEl,
+        save
+      ])]);
+    });
   }
 
   // ---------- 起動 ----------
