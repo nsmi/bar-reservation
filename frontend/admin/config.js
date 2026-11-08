@@ -3,7 +3,7 @@
  * STAFF_LIFF_ID は「店舗用」LINEミニアプリ チャネルの LIFF ID（顧客用とは別チャネル）。
  */
 window.ADMIN_CONFIG = Object.freeze({
-  STAFF_LIFF_ID: 'REPLACE_WITH_STAFF_LIFF_ID',
+  STAFF_LIFF_ID: '2012465168-tyLr0vog',
   API_URL: 'https://script.google.com/macros/s/AKfycbzho1RHsVS2p2AvTP0oCLBXhyJGSbPra8iN1B9U-fTBg4dQmYgI-TEqgd5-r0dgz9fF/exec',
   SHOP_NAME: 'Barサンドラ伊豆',
   TIME_SLOT_START: '18:00',
