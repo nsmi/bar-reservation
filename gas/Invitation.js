@@ -25,7 +25,7 @@ function determineInvitation_(p) {
     // 顧客が選んだ希望キャストは呼びの根拠にしない
     return result_(INVITATION_TYPE.STORE_CUSTOMER, '', 'customer_line_reservation');
   }
-  if (r.source !== 'cast') {
+  if (!isInviteSource_(r.source)) {
     return result_(INVITATION_TYPE.STORE_CUSTOMER, '', 'store_reservation');
   }
 
@@ -39,15 +39,18 @@ function determineInvitation_(p) {
   if (String(r.version) !== '1') {
     return result_(INVITATION_TYPE.REVIEW_REQUIRED, castId, 'reservation_modified');
   }
-  if (r.created_by_user_id !== castId) {
-    return result_(INVITATION_TYPE.REVIEW_REQUIRED, castId, 'registered_by_other');
+  // 担当者以外が登録した呼び予約は、オーナーによる代理登録だけを認める
+  var proxy = r.created_by_user_id !== castId;
+  if (proxy) {
+    var creator = findUserIn_(p.users, r.created_by_user_id);
+    if (!creator || creator.role !== 'owner' || !isTruthyCell_(creator.active)) {
+      return result_(INVITATION_TYPE.REVIEW_REQUIRED, castId, 'registered_by_other');
+    }
   }
 
-  var cast = null;
-  for (var i = 0; i < p.users.length; i++) {
-    if (p.users[i].user_id === castId) { cast = p.users[i]; break; }
-  }
-  if (!cast || cast.role !== 'cast' || !isTruthyCell_(cast.active)) {
+  // 担当者はキャスト・スタッフ・オーナーのいずれか（有効なユーザー）
+  var cast = findUserIn_(p.users, castId);
+  if (!cast || STAFF_ROLES.indexOf(cast.role) < 0 || !isTruthyCell_(cast.active)) {
     return result_(INVITATION_TYPE.REVIEW_REQUIRED, castId, 'cast_inactive');
   }
   if (p.checkedInBy.user_id === castId) {
@@ -56,7 +59,19 @@ function determineInvitation_(p) {
   if (p.checkedInAt.getTime() - createdAt.getTime() < p.thresholdMinutes * 60 * 1000) {
     return result_(INVITATION_TYPE.REVIEW_REQUIRED, castId, 'registered_shortly_before');
   }
-  return result_(INVITATION_TYPE.CAST_INVITED, castId, 'cast_reservation');
+  return result_(INVITATION_TYPE.CAST_INVITED, castId, proxy ? 'owner_proxy_reservation' : 'cast_reservation');
+}
+
+/** 呼び予約か。'cast' はフェーズ2初版（キャストが登録＝呼び予約）の値 */
+function isInviteSource_(source) {
+  return source === 'invite' || source === 'cast';
+}
+
+function findUserIn_(users, userId) {
+  for (var i = 0; i < users.length; i++) {
+    if (users[i].user_id === userId) return users[i];
+  }
+  return null;
 }
 
 function result_(type, castId, reason) {

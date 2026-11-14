@@ -13,7 +13,7 @@
 
   var LABELS = {
     role: { owner: 'オーナー', staff: 'スタッフ', cast: 'キャスト' },
-    source: { line_customer: 'LINE予約', cast: '呼び予約', owner: '店舗受付', staff: '店舗受付' },
+    source: { line_customer: 'LINE予約', invite: '呼び予約', store: '店舗受付', cast: '呼び予約', owner: '店舗受付', staff: '店舗受付' },
     status: { reserved: '予約中', visited: '来店済', cancelled: 'キャンセル', no_show: '来店なし' },
     type: { cast_invited: '呼び', store_customer: '店客', review_required: '要確認' },
     typeClass: { cast_invited: 'invited', store_customer: 'store', review_required: 'review' },
@@ -23,12 +23,13 @@
       store_reservation: '店舗受付の予約',
       reserved_after_checkin: '来店後に予約登録',
       reservation_modified: '予約が変更されている',
-      registered_by_other: '担当キャスト以外が登録',
-      cast_inactive: '担当キャストが無効・キャストでない',
-      self_checkin: '担当キャスト本人が来店登録',
+      registered_by_other: '担当者以外が登録',
+      cast_inactive: '担当者が無効',
+      self_checkin: '担当者本人が来店登録',
       registered_shortly_before: '来店直前に予約登録',
       reservation_incomplete: '予約情報が不完全',
-      cast_reservation: 'キャストの事前予約',
+      cast_reservation: '担当者の事前予約',
+      owner_proxy_reservation: 'オーナーが担当者の名前で事前予約',
       owner_override: 'オーナーが判定を変更'
     },
     payment: { cash: '現金', card: 'カード', qr: 'QR決済', other: 'その他' }
@@ -348,7 +349,34 @@
     var c = state.constraints;
     var holder = {};
     var isCast = state.me.role === 'cast';
+    var isOwner = state.me.role === 'owner';
     var body = h('div', { hidden: true });
+
+    // 予約の種類。呼び予約は日払いの対象候補、店舗受付は店客扱い
+    var type = selectEl([{ value: 'invite', label: '呼び予約' }, { value: 'store', label: '店舗受付（呼びではない）' }], isCast ? 'invite' : 'store');
+    // 担当者: オーナーは従業員の名前で呼び予約を登録できる。それ以外は本人に固定
+    var assignee = selectEl([{ value: '', label: '読み込み中…' }], '');
+    var assigneeField = fieldEl('担当者', assignee, '日払いの対象になる人です。');
+    var typeHint = h('p', { className: 'hint' });
+    function updateType() {
+      var invite = type.value === 'invite';
+      assigneeField.hidden = !(invite && isOwner);
+      typeHint.textContent = invite
+        ? (isOwner ? '選んだ担当者の呼び予約として登録されます。' : 'あなたの担当（呼び予約）として登録されます。') + '来店の30分以上前に登録してください。'
+        : '店舗受付の予約として登録されます（呼びにはならず、日払いの対象外です）。';
+    }
+    type.addEventListener('change', updateType);
+    updateType();
+    if (isOwner) {
+      api('staff.listUsers').then(function (res) {
+        if (!res) return;
+        assignee.textContent = '';
+        assignee.appendChild(h('option', { value: '' }, '選択してください'));
+        res.users.filter(function (u) { return u.active; }).forEach(function (u) {
+          assignee.appendChild(h('option', { value: u.userId }, u.displayName + '（' + (LABELS.role[u.role] || u.role) + '）'));
+        });
+      });
+    }
     var toggle = h('button', { type: 'button', className: 'btn small' }, '＋ 登録');
     toggle.addEventListener('click', function () { body.hidden = !body.hidden; });
 
@@ -366,6 +394,7 @@
     submit.addEventListener('click', function () {
       if (!picker.validate()) return;
       if (!date.value) { toast('来店日を選択してください。', true); return; }
+      if (type.value === 'invite' && isOwner && !assignee.value) { toast('担当者を選択してください。', true); return; }
       var slot = time.value.split('|');
       var payload = function () {
         return {
@@ -373,7 +402,9 @@
             date: addDays(date.value, Number(slot[0])),
             time: slot[1],
             numberOfGuests: Number(guests.value),
-            note: note.value
+            note: note.value,
+            type: type.value,
+            assigneeUserId: type.value === 'invite' && isOwner ? assignee.value : ''
           })
         };
       };
@@ -393,6 +424,9 @@
       });
     });
 
+    body.appendChild(fieldEl('予約の種類', type));
+    body.appendChild(assigneeField);
+    body.appendChild(typeHint);
     body.appendChild(picker.el);
     body.appendChild(fieldEl('来店日（営業日）', date));
     body.appendChild(fieldEl('来店時刻', time, '「翌」は来店日の深夜です。'));
@@ -400,10 +434,7 @@
     body.appendChild(fieldEl('備考', note));
     body.appendChild(submit);
 
-    var hint = isCast
-      ? 'あなたの担当（呼び予約）として登録されます。来店前に登録してください。'
-      : '店舗受付の予約として登録されます（呼びにはなりません）。';
-    return card(isCast ? '呼び予約の登録' : '予約の登録', [h('p', { className: 'hint' }, hint), body], toggle);
+    return card('予約の登録', [body], toggle);
   }
 
   // ---------- 来店 ----------
@@ -417,7 +448,7 @@
     ]).then(function (r) {
       var visitsRes = r[0];
       if (!visitsRes) return;
-      var casts = r[2] ? r[2].users.filter(function (u) { return u.role === 'cast'; }) : [];
+      var casts = r[2] ? r[2].users : []; // 呼びの担当者候補（キャスト・スタッフ・オーナー）
       var nodes = [];
       if (isToday) {
         var reserved = r[1] ? r[1].reservations.filter(function (x) { return x.status === 'reserved'; }) : [];
@@ -480,7 +511,7 @@
           typeBadge(v.invitationType)),
         h('div', { className: 'meta' }, [
           LABELS.reason[v.reason] || v.reason,
-          v.attributedCastName ? 'キャスト: ' + v.attributedCastName : '',
+          v.attributedCastName ? '担当: ' + v.attributedCastName : '',
           '登録: ' + v.checkedInByName,
           v.paid ? (v.transaction ? '会計 ' + yen(v.transaction.totalAmount) : '会計済') : '未会計'
         ].filter(Boolean).join(' / ')));
@@ -499,8 +530,8 @@
 
     var type = selectEl([{ value: 'cast_invited', label: '呼び' }, { value: 'store_customer', label: '店客' }],
       v.invitationType === 'store_customer' ? 'store_customer' : 'cast_invited');
-    var cast = selectEl(casts.map(function (c) { return { value: c.userId, label: c.displayName + (c.active ? '' : '（無効）') }; }), v.attributedCastId);
-    var castField = fieldEl('担当キャスト', cast);
+    var cast = selectEl(casts.map(function (c) { return { value: c.userId, label: c.displayName + '（' + (LABELS.role[c.role] || c.role) + (c.active ? '' : '・無効') + '）' }; }), v.attributedCastId);
+    var castField = fieldEl('担当者', cast);
     var reason = h('textarea', { rows: '2', maxlength: '200', placeholder: '変更理由（必須）' });
     var submit = h('button', { type: 'button', className: 'btn primary' }, '変更する');
     type.addEventListener('change', function () { castField.hidden = type.value !== 'cast_invited'; });
@@ -508,7 +539,7 @@
 
     submit.addEventListener('click', function () {
       if (!reason.value.trim()) { toast('変更理由を入力してください。', true); return; }
-      if (type.value === 'cast_invited' && !cast.value) { toast('担当キャストを選択してください。', true); return; }
+      if (type.value === 'cast_invited' && !cast.value) { toast('担当者を選択してください。', true); return; }
       submit.disabled = true;
       api('staff.overrideInvitation', {
         visitId: v.visitId,
@@ -630,7 +661,7 @@
             stat('未会計', s.unpaidVisitCount + '件')),
           h('p', { className: 'hint' }, '呼び売上・店客売上・要確認は店舗総売上の内訳です。日払いは会計総額（キャストドリンク代込み）の' + state.constraints.payoutRatePercent + '%（1円未満切り捨て）。')
         ]),
-        card('キャスト別', castItems.length ? h('ul', { className: 'list' }, castItems) : h('p', { className: 'empty' }, '呼び売上はありません。')),
+        card('担当者別', castItems.length ? h('ul', { className: 'list' }, castItems) : h('p', { className: 'empty' }, '呼び売上はありません。')),
         card('要確認一覧', reviewItems.length
           ? [h('ul', { className: 'list' }, reviewItems), state.me.role === 'owner' ? h('p', { className: 'hint' }, '「来店」タブの「判定を変更」で確定してください。') : null]
           : h('p', { className: 'empty' }, '要確認の来店はありません。'))
@@ -698,8 +729,8 @@
       if (next === u.role) { toast('変更後のロールを選んでください。', true); return; }
       var msg = u.displayName + ' のロールを「' + LABELS.role[u.role] + '」から「' + LABELS.role[next] + '」に変更しますか？';
       if (u.role === 'cast') {
-        msg += '\n\n・このキャストの来店前の呼び予約は、来店登録時に「要確認」になります。' +
-          '\n・お客様の予約画面の希望キャストに表示されなくなります。' +
+        msg += '\n\n・お客様の予約画面の希望キャストに表示されなくなります。' +
+          '\n・担当の呼び予約はそのまま有効です。' +
           '\n・判定済みの来店・会計は変わりません。';
       }
       if (next === 'owner') msg += '\n\nオーナーはすべての操作（ユーザー管理・判定変更・設定）ができます。';

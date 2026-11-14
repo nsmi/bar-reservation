@@ -132,12 +132,12 @@ test('GAS エディタからの初回オーナー招待（オーナー行がな�
 
 // ---------- 予約 ----------
 
-test('キャストの予約は source=cast、担当キャストは本人に固定（入力値は無視）', () => {
+test('キャストの予約は既定で呼び予約（source=invite）、担当は本人（不明な入力は無視）', () => {
   const c = setup();
   const res = castReservation(c, T.castA, { assignedCastId: 'USR-0003', source: 'line_customer' });
   assert.equal(res.ok, true, JSON.stringify(res));
   const r = c.rows('Reservations')[0];
-  assert.equal(r.source, 'cast');
+  assert.equal(r.source, 'invite');
   assert.equal(r.assigned_cast_id, 'USR-0002');
   assert.equal(r.created_by_user_id, 'USR-0002');
   assert.equal(r.created_at, '2026-11-07T12:00:00+09:00');
@@ -345,4 +345,85 @@ test('オーナーが要確認を呼びに変更 → 日払いに反映、理由
   assert.equal(stale.error.code, 'VERSION_CONFLICT');
   const listed = c.call(T.owner, 'staff.listVisits', { businessDate: '2026-11-07' }).visits.find((v) => v.visitId === review.visitId);
   assert.equal(listed.version, 2);
+});
+
+// ---------- 予約の種類・担当者（2026-11-14 追加） ----------
+
+const reserve = (c, token, extra = {}) => c.call(token, 'staff.createReservation', {
+  requestId: rid(),
+  reservation: { newCustomerNickname: 'けん', date: '2026-11-07', time: '21:00', numberOfGuests: 2, note: '', ...extra }
+});
+
+test('全ロールが「呼び予約」と「店舗受付」を選べる（スタッフ・オーナーの既定は店舗受付）', () => {
+  const c = setup();
+  assert.equal(reserve(c, T.castA, { type: 'store' }).ok, true);
+  assert.equal(reserve(c, T.staff, { type: 'invite' }).ok, true);
+  assert.equal(reserve(c, T.staff).ok, true);
+  assert.equal(reserve(c, T.owner, { type: 'invite' }).ok, true);
+  assert.equal(reserve(c, T.owner, { type: 'other' }).error.code, 'VALIDATION_ERROR');
+  const rows = c.rows('Reservations').map((r) => [r.source, r.assigned_cast_id]);
+  assert.deepEqual(rows, [['store', ''], ['invite', 'USR-0004'], ['store', ''], ['invite', 'USR-0001']]);
+});
+
+test('スタッフの呼び予約 → 呼び、日払いはスタッフに付く', () => {
+  const c = setup();
+  reserve(c, T.staff, { type: 'invite' });
+  c.at('2026-11-07T21:00:00+09:00');
+  // キャストは他人の予約を来店登録できない
+  assert.equal(c.call(T.castA, 'staff.checkIn', { requestId: rid(), reservationId: reservationIdOf(c) }).error.code, 'NOT_FOUND');
+  const v2 = c.call(T.owner, 'staff.checkIn', { requestId: rid(), reservationId: reservationIdOf(c) });
+  assert.equal(v2.visit.invitationType, 'cast_invited');
+  assert.equal(v2.visit.attributedCastName, 'スタッフ');
+  c.call(T.owner, 'staff.createTransaction', { requestId: rid(), visitId: v2.visit.visitId, totalAmount: 12345, castDrinkAmount: 0, paymentMethod: 'cash' });
+  const s = c.call(T.owner, 'staff.dailySummary', { businessDate: '2026-11-07' }).summary;
+  assert.deepEqual(s.casts.map((x) => [x.castName, x.payout]), [['スタッフ', 1234]]);
+});
+
+test('店舗受付の予約は、キャストが登録しても店客', () => {
+  const c = setup();
+  reserve(c, T.castA, { type: 'store' });
+  c.at('2026-11-07T21:00:00+09:00');
+  const v = c.call(T.staff, 'staff.checkIn', { requestId: rid(), reservationId: reservationIdOf(c) });
+  assert.equal(v.visit.invitationType, 'store_customer');
+  assert.equal(v.visit.reason, 'store_reservation');
+});
+
+test('オーナーは従業員の名前で呼び予約でき、担当者は自分の予約として見られる', () => {
+  const c = setup();
+  const r = reserve(c, T.owner, { type: 'invite', assigneeUserId: 'USR-0002' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const row = c.rows('Reservations')[0];
+  assert.equal(row.assigned_cast_id, 'USR-0002');
+  assert.equal(row.created_by_user_id, 'USR-0001');
+  // 担当キャストの一覧に出る（他のキャストには出ない）
+  assert.equal(c.call(T.castA, 'staff.listReservations', { businessDate: '2026-11-07' }).reservations.length, 1);
+  assert.equal(c.call(T.castB, 'staff.listReservations', { businessDate: '2026-11-07' }).reservations.length, 0);
+  c.at('2026-11-07T21:00:00+09:00');
+  const v = c.call(T.staff, 'staff.checkIn', { requestId: rid(), reservationId: reservationIdOf(c) });
+  assert.equal(v.visit.invitationType, 'cast_invited');
+  assert.equal(v.visit.reason, 'owner_proxy_reservation');
+  assert.equal(v.visit.attributedCastName, 'あや');
+  // 代理登録は監査ログに登録者と担当者の両方が残る
+  const log = c.rows('AuditLogs').find((l) => l.action === 'reservation.create');
+  assert.equal(log.user_id, 'USR-0001');
+  assert.equal(JSON.parse(log.after_json).assigned_cast_id, 'USR-0002');
+});
+
+test('オーナー以外は他人の名前で呼び予約できない。無効・存在しない担当者は拒否', () => {
+  const c = setup();
+  assert.equal(reserve(c, T.castA, { type: 'invite', assigneeUserId: 'USR-0003' }).error.code, 'FORBIDDEN');
+  assert.equal(reserve(c, T.staff, { type: 'invite', assigneeUserId: 'USR-0002' }).error.code, 'FORBIDDEN');
+  assert.equal(reserve(c, T.owner, { type: 'invite', assigneeUserId: 'USR-9999' }).error.fields.assigneeUserId, 'invalid');
+  c.call(T.owner, 'staff.setUserActive', { userId: 'USR-0003', active: false });
+  assert.equal(reserve(c, T.owner, { type: 'invite', assigneeUserId: 'USR-0003' }).error.fields.assigneeUserId, 'invalid');
+  assert.equal(c.rows('Reservations').length, 0);
+});
+
+test('判定変更でスタッフを担当者にできる', () => {
+  const c = setup();
+  c.at('2026-11-07T21:00:00+09:00');
+  const v = c.call(T.staff, 'staff.checkIn', { requestId: rid(), newCustomerNickname: 'ふらっと' }).visit;
+  const r = c.call(T.owner, 'staff.overrideInvitation', { visitId: v.visitId, expectedVersion: v.version, invitationType: 'cast_invited', attributedCastId: 'USR-0004', reason: 'スタッフの紹介' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(c.rows('Visits')[0].attributed_cast_id, 'USR-0004');
 });

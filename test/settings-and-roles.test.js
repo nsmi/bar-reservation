@@ -59,7 +59,7 @@ test('ロール変更: オーナー以外は不可、自分自身は不可、競
   assert.equal(c.rows('Users').find((u) => u.user_id === 'USR-0002').role, 'cast');
 });
 
-test('担当キャストが来店前にキャストでなくなった呼び予約は、来店登録で要確認になる', () => {
+test('担当キャストが来店前にスタッフへ変わっても呼び予約は有効、無効化されたら要確認', () => {
   const c = setup();
   c.setNow(new Date('2026-11-08T19:00:00+09:00'));
   const res = c.call(T.castA, 'staff.createReservation', {
@@ -71,8 +71,19 @@ test('担当キャストが来店前にキャストでなくなった呼び予�
   c.setNow(new Date('2026-11-08T21:00:00+09:00'));
   const v = c.call(T.owner, 'staff.checkIn', { requestId: crypto.randomUUID(), reservationId: res.reservation.reservationId });
   assert.equal(v.ok, true, JSON.stringify(v));
-  assert.equal(v.visit.invitationType, 'review_required');
-  assert.equal(v.visit.reason, 'cast_inactive');
+  assert.equal(v.visit.invitationType, 'cast_invited');
+  assert.equal(v.visit.reason, 'cast_reservation');
+
+  // 無効化された担当者の呼び予約は要確認
+  c.setNow(new Date('2026-11-08T19:00:00+09:00'));
+  const res2 = c.call(T.castA, 'staff.createReservation', {
+    requestId: crypto.randomUUID(),
+    reservation: { type: 'invite', newCustomerNickname: 'りょう', date: '2026-11-08', time: '22:00', numberOfGuests: 1, note: '' }
+  });
+  c.call(T.owner, 'staff.setUserActive', { userId: 'USR-0002', active: false });
+  c.setNow(new Date('2026-11-08T22:00:00+09:00'));
+  const v2 = c.call(T.owner, 'staff.checkIn', { requestId: crypto.randomUUID(), reservationId: res2.reservation.reservationId });
+  assert.equal(v2.visit.reason, 'cast_inactive');
 });
 
 // ---------- 予約受付の設定 ----------

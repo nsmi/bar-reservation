@@ -46,8 +46,30 @@ test('判定表（引き継ぎ資料 6.2）', () => {
   assert.equal(judge(castReservation({ version: '2' })).reason, 'reservation_modified');
 });
 
-test('店舗受付（owner/staff 登録）の予約は店客', () => {
+test('店舗受付の予約は店客（フェーズ2初版の owner/staff も同じ）', () => {
+  assert.equal(judge(castReservation({ source: 'store', assigned_cast_id: '' })).reason, 'store_reservation');
   assert.equal(judge(castReservation({ source: 'owner', assigned_cast_id: '' })).reason, 'store_reservation');
+  assert.equal(judge(castReservation({ source: 'staff', assigned_cast_id: '' })).reason, 'store_reservation');
+});
+
+test('呼び予約（source=invite）はキャスト以外（スタッフ・オーナー）も担当者になれる', () => {
+  const owner = { user_id: 'USR-0001', role: 'owner', active: 'true', display_name: 'オーナー' };
+  const all = [castA, staff, owner];
+  const j = (r, by) => plain(gas.determineInvitation_({ reservation: r, checkedInBy: by, checkedInAt, users: all, thresholdMinutes: 30 }));
+  // スタッフ本人の呼び予約をキャストが来店登録 → 呼び
+  assert.deepEqual(j(castReservation({ source: 'invite', assigned_cast_id: 'USR-0009', created_by_user_id: 'USR-0009' }), castA),
+    { type: 'cast_invited', castId: 'USR-0009', reason: 'cast_reservation' });
+  // オーナーがキャストの名前で登録（代理） → 呼び（代理登録と分かる理由）
+  assert.deepEqual(j(castReservation({ source: 'invite', created_by_user_id: 'USR-0001' }), staff),
+    { type: 'cast_invited', castId: 'USR-0002', reason: 'owner_proxy_reservation' });
+  // オーナー以外による代理 → 要確認
+  assert.equal(j(castReservation({ source: 'invite', created_by_user_id: 'USR-0009' }), owner).reason, 'registered_by_other');
+  // 代理登録でも 30分ルール・本人来店登録のルールは適用
+  assert.equal(j(castReservation({ source: 'invite', created_by_user_id: 'USR-0001', created_at: '2026-11-07T20:50:00+09:00' }), staff).reason, 'registered_shortly_before');
+  assert.equal(j(castReservation({ source: 'invite', created_by_user_id: 'USR-0001' }), castA).reason, 'self_checkin');
+  // 代理登録したオーナーが無効化されていたら要確認
+  const j2 = plain(gas.determineInvitation_({ reservation: castReservation({ source: 'invite', created_by_user_id: 'USR-0001' }), checkedInBy: staff, checkedInAt, users: [castA, staff, { ...owner, active: 'false' }], thresholdMinutes: 30 }));
+  assert.equal(j2.reason, 'registered_by_other');
 });
 
 test('担当キャストが無効化されている場合は要確認', () => {

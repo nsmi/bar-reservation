@@ -72,16 +72,42 @@ function staffListReservations_(ctx) {
   var list = readAll_('Reservations').filter(function (r) {
     var at = parseIsoDate_(r.scheduled_at);
     if (!at || businessDateOf_(at, cutoff) !== date) return false;
-    // キャストは自分が登録した予約のみ
-    return ctx.user.role !== 'cast' || r.created_by_user_id === ctx.user.user_id;
+    // キャストは自分が登録した予約と、自分が担当の予約のみ
+    return ctx.user.role !== 'cast' || isOwnReservation_(r, ctx.user);
   }).map(function (r) { return toStaffReservation_(r, usersById); });
   list.sort(function (a, b) { return a.scheduledAt < b.scheduledAt ? -1 : a.scheduledAt > b.scheduledAt ? 1 : 0; });
   return { ok: true, businessDate: date, reservations: list };
 }
 
+function isOwnReservation_(r, user) {
+  return r.created_by_user_id === user.user_id || r.assigned_cast_id === user.user_id;
+}
+
 /**
- * 店舗側の予約登録。キャストが登録した予約だけが呼び候補（source = 'cast'）。
- * 担当キャストはログイン中のキャスト本人に固定し、入力からは受け取らない。
+ * 予約の種類と担当者を決める。
+ * - type: 'invite'（呼び予約）/ 'store'（店舗受付）。省略時はキャストなら呼び予約、それ以外は店舗受付。
+ * - 担当者は原則ログイン中の本人。オーナーだけが他の従業員（有効なユーザー）を担当者に指定できる。
+ */
+function resolveReservationType_(input, user, usersById) {
+  var type = input.type === undefined || input.type === null || input.type === ''
+    ? (user.role === 'cast' ? 'invite' : 'store')
+    : input.type;
+  if (type !== 'invite' && type !== 'store') return { error: errorResponse_('VALIDATION_ERROR', { type: 'invalid' }) };
+  if (type === 'store') return { type: type, assigneeId: '' };
+
+  var assigneeId = input.assigneeUserId || user.user_id;
+  if (assigneeId !== user.user_id) {
+    if (user.role !== 'owner') return { error: errorResponse_('FORBIDDEN') };
+    var assignee = usersById[assigneeId];
+    if (typeof assigneeId !== 'string' || !assignee || !isTruthyCell_(assignee.active) || STAFF_ROLES.indexOf(assignee.role) < 0) {
+      return { error: errorResponse_('VALIDATION_ERROR', { assigneeUserId: 'invalid' }) };
+    }
+  }
+  return { type: type, assigneeId: assigneeId };
+}
+
+/**
+ * 店舗側の予約登録。呼び予約（source = 'invite'）だけが呼び判定の対象。
  */
 function staffCreateReservation_(ctx) {
   var body = ctx.body;
@@ -107,6 +133,9 @@ function staffCreateReservation_(ctx) {
     }
   }
 
+  var kind = resolveReservationType_(input, user, usersById);
+  if (kind.error) return kind.error;
+
   var nowIso = formatJstIso_(now);
   var resolved = resolveCustomerInput_(input, readAll_('Customers'), nowIso, ctx);
   if (resolved.error) return resolved.error;
@@ -118,9 +147,9 @@ function staffCreateReservation_(ctx) {
     nickname: resolved.customer.nickname,
     scheduled_at: formatJstIso_(schedule.scheduledAt),
     number_of_guests: schedule.numberOfGuests,
-    source: user.role, // 'cast' | 'owner' | 'staff'
+    source: kind.type, // 'invite'（呼び予約）| 'store'（店舗受付）
     created_by_user_id: user.user_id,
-    assigned_cast_id: user.role === 'cast' ? user.user_id : '',
+    assigned_cast_id: kind.assigneeId, // 呼び予約の担当者（キャスト・スタッフ・オーナー）
     requested_cast_id: '',
     created_at: nowIso,
     status: RESERVATION_STATUS.RESERVED,
@@ -210,7 +239,7 @@ function staffCheckIn_(ctx) {
       if (reservations[j].reservation_id === body.reservationId) { reservation = reservations[j]; break; }
     }
     if (!reservation) return errorResponse_('NOT_FOUND');
-    if (user.role === 'cast' && reservation.created_by_user_id !== user.user_id) return errorResponse_('NOT_FOUND');
+    if (user.role === 'cast' && !isOwnReservation_(reservation, user)) return errorResponse_('NOT_FOUND');
     if (reservation.status !== RESERVATION_STATUS.RESERVED) return errorResponse_('RESERVATION_NOT_AVAILABLE');
     var at = parseIsoDate_(reservation.scheduled_at);
     if (!at || businessDateOf_(at, config.BUSINESS_DAY_CUTOFF_HOUR) !== businessDate) {
@@ -279,7 +308,8 @@ function staffOverrideInvitation_(ctx) {
   var castId = '';
   if (type === INVITATION_TYPE.CAST_INVITED) {
     var cast = findUser_(readAll_('Users'), body.attributedCastId);
-    if (!cast || cast.role !== 'cast') return errorResponse_('VALIDATION_ERROR', { attributedCastId: 'unknown' });
+    // 呼びの担当者はキャスト・スタッフ・オーナーのいずれか
+    if (!cast || STAFF_ROLES.indexOf(cast.role) < 0) return errorResponse_('VALIDATION_ERROR', { attributedCastId: 'unknown' });
     castId = cast.user_id;
   }
 
