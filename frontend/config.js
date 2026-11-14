@@ -4,7 +4,7 @@
  * REPLACE_WITH_ が残っている間はアプリが起動せず、GitHub Pages へのデプロイも失敗する。
  */
 window.APP_CONFIG = Object.freeze({
-  LIFF_ID: '2012448458-QHDMgaU1',
+  LIFF_ID: '2012614927-MmfDkJmV',
   API_URL: 'https://script.google.com/macros/s/AKfycbzho1RHsVS2p2AvTP0oCLBXhyJGSbPra8iN1B9U-fTBg4dQmYgI-TEqgd5-r0dgz9fF/exec',
   SHOP_NAME: 'Bar予約システム'
   // 予約の受付時間・人数などは、店舗用画面の「設定」タブで変更する（サーバーから取得）
