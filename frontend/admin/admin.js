@@ -344,9 +344,24 @@
       var title = (state.me.role === 'cast' ? 'あなたの予約' : '予約一覧') + '（' + formatDateJa(state.date) + '）';
       replacePanel(panel, [
         reservationForm(),
-        card(title, items.length ? h('ul', { className: 'list' }, items) : h('p', { className: 'empty' }, '予約はありません。'))
+        card(title, [
+          res.capacity ? capacityLine(res.capacity) : null,
+          items.length ? h('ul', { className: 'list' }, items) : h('p', { className: 'empty' }, '予約はありません。')
+        ])
       ]);
     });
+  }
+
+  var CAPACITY_LABELS = { day_groups: '1日の組数', day_guests: '1日の人数', hour_groups: '1時間あたりの組数' };
+
+  /** この日の予約数（予約中・来店済み）と上限 */
+  function capacityLine(cap) {
+    var limit = function (n, unit) { return n > 0 ? ' / 上限 ' + n + unit : ''; };
+    var full = (cap.maxGroups > 0 && cap.groups >= cap.maxGroups) || (cap.maxGuests > 0 && cap.guests >= cap.maxGuests);
+    return h('p', { className: 'hint' },
+      'この日の予約: ' + cap.groups + '組' + limit(cap.maxGroups, '組') + '・' + cap.guests + '名' + limit(cap.maxGuests, '名') +
+      (cap.maxGroupsPerHour > 0 ? '（1時間あたり上限 ' + cap.maxGroupsPerHour + '組）' : ''),
+      full ? ' ' : null, full ? badge('満席', 'review') : null);
   }
 
   function reservationForm() {
@@ -412,8 +427,13 @@
           })
         };
       };
-      submitWrite(submit, holder, 'staff.createReservation', payload, function () {
-        toast('予約を登録しました。');
+      submitWrite(submit, holder, 'staff.createReservation', payload, function (res) {
+        var w = res.capacityWarnings || [];
+        if (w.length) {
+          toast('予約を登録しました。ただし受付上限（' + w.map(function (k) { return CAPACITY_LABELS[k] || k; }).join('・') + '）を超えています。', true);
+        } else {
+          toast('予約を登録しました。');
+        }
         state.customers = null;
         renderPanel();
       }, {
@@ -965,7 +985,8 @@
 
   var SETTING_LABELS = {
     openTime: '受付開始', closeTime: '最終受付', defaultTime: '最初に表示する時刻', timeStepMinutes: '時間の間隔',
-    maxDaysAhead: '何日先まで', minGuests: '最少人数', maxGuests: '最大人数', maxActivePerCustomer: '1人あたりの予約数'
+    maxDaysAhead: '何日先まで', minGuests: '最少人数', maxGuests: '最大人数', maxActivePerCustomer: '1人あたりの予約数',
+    maxGroupsPerDay: '1日の上限（組数）', maxGuestsPerDay: '1日の上限（人数）', maxGroupsPerHour: '1時間あたりの上限（組数）'
   };
 
   function settingErrorMessage(code, cutoffHour) {
@@ -975,7 +996,7 @@
       invalid_step: '時間の間隔に合っていません（例: 30分間隔なら 00分か30分）。',
       before_open: '受付開始より後で、営業日の切り替え（' + cutoffHour + ':00）より前にしてください。',
       outside_hours: '受付開始〜最終受付の間にしてください。',
-      less_than_min: '最少人数以上にしてください。'
+      less_than_min: '最少人数以上にしてください（0 は上限なし）。'
     }[code] || '値を確認してください。';
   }
 
@@ -995,7 +1016,10 @@
         maxDaysAhead: num(s.maxDaysAhead, 0, 365),
         minGuests: num(s.minGuests, 1, 50),
         maxGuests: num(s.maxGuests, 1, 50),
-        maxActivePerCustomer: num(s.maxActivePerCustomer, 1, 20)
+        maxActivePerCustomer: num(s.maxActivePerCustomer, 1, 20),
+        maxGroupsPerDay: num(s.maxGroupsPerDay, 0, 500),
+        maxGuestsPerDay: num(s.maxGuestsPerDay, 0, 2000),
+        maxGroupsPerHour: num(s.maxGroupsPerHour, 0, 200)
       };
       var errorsEl = h('ul', { className: 'form-errors', hidden: true });
       var save = h('button', { type: 'button', className: 'btn primary' }, '保存する');
@@ -1038,6 +1062,12 @@
         fieldEl(SETTING_LABELS.minGuests, inputs.minGuests),
         fieldEl(SETTING_LABELS.maxGuests, inputs.maxGuests),
         fieldEl(SETTING_LABELS.maxActivePerCustomer, inputs.maxActivePerCustomer, '来店前の予約を、お客様1人につき何件まで持てるか。'),
+        h('h3', { className: 'subhead' }, '受付上限（満席の設定）'),
+        h('p', { className: 'hint' }, '予約中・来店済みの予約を数えます。上限に達した日・時間帯は、お客様の予約画面で「満席」になり選べません。'
+          + '店舗用画面からの登録は止めず、警告だけ出します。0 にすると上限なしです。'),
+        fieldEl(SETTING_LABELS.maxGroupsPerDay, inputs.maxGroupsPerDay),
+        fieldEl(SETTING_LABELS.maxGuestsPerDay, inputs.maxGuestsPerDay, '人数が入りきらない予約は受け付けません。'),
+        fieldEl(SETTING_LABELS.maxGroupsPerHour, inputs.maxGroupsPerHour, '21:00〜21:59 のように、同じ時台の予約を数えます。'),
         errorsEl,
         save
       ])]);

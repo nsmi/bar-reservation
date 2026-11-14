@@ -29,6 +29,7 @@ function handleGetFormOptions_() {
   return {
     ok: true,
     casts: [], // 希望キャストは廃止。古い画面（キャッシュ）が casts を参照しても壊れないよう空配列を返す
+    availability: publicAvailability_(readAll_('Reservations'), config, now_()), // 満席の日・時間帯（件数は返さない）
     constraints: {
       minGuests: config.RESERVATION_MIN_GUESTS,
       maxGuests: config.RESERVATION_MAX_GUESTS,
@@ -95,7 +96,12 @@ function handleCreateReservation_(body) {
       return errorResponse_('REQUEST_ID_CONFLICT');
     }
 
-    // 3-2. 既存顧客の状態と予約件数上限
+    // 3-2. 受付上限（新しいお客様の登録より前に確かめる）
+    var full = capacityProblems_(capacityCounts_(reservations, config.BUSINESS_DAY_CUTOFF_HOUR),
+      v.value.scheduledAt, v.value.numberOfGuests, config);
+    if (full.length) return errorResponse_('FULLY_BOOKED', { capacity: full });
+
+    // 3-3. 既存顧客の状態と予約件数上限
     if (customer) {
       if (!isTruthyCell_(customer.active)) return errorResponse_('CUSTOMER_INACTIVE');
       var activeCount = reservations.filter(function (r) {
@@ -115,7 +121,7 @@ function handleCreateReservation_(body) {
       });
     }
 
-    // 3-3. 予約保存
+    // 3-4. 予約保存
     var record = {
       reservation_id: nextReservationId_(reservations, now),
       request_id: body.requestId,

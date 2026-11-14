@@ -12,7 +12,11 @@ var EDITABLE_SETTINGS = [
   { key: 'maxDaysAhead',         prop: 'RESERVATION_MAX_DAYS_AHEAD',          type: 'int', min: 0, max: 365 },
   { key: 'minGuests',            prop: 'RESERVATION_MIN_GUESTS',              type: 'int', min: 1, max: 50 },
   { key: 'maxGuests',            prop: 'RESERVATION_MAX_GUESTS',              type: 'int', min: 1, max: 50 },
-  { key: 'maxActivePerCustomer', prop: 'RESERVATION_MAX_ACTIVE_PER_CUSTOMER', type: 'int', min: 1, max: 20 }
+  { key: 'maxActivePerCustomer', prop: 'RESERVATION_MAX_ACTIVE_PER_CUSTOMER', type: 'int', min: 1, max: 20 },
+  // 受付上限。0 は上限なし
+  { key: 'maxGroupsPerDay',      prop: 'RESERVATION_MAX_GROUPS_PER_DAY',      type: 'int', min: 0, max: 500 },
+  { key: 'maxGuestsPerDay',      prop: 'RESERVATION_MAX_GUESTS_PER_DAY',      type: 'int', min: 0, max: 2000 },
+  { key: 'maxGroupsPerHour',     prop: 'RESERVATION_MAX_GROUPS_PER_HOUR',     type: 'int', min: 0, max: 200 }
 ];
 
 function timeToMinutes_(hhmm) {
@@ -72,6 +76,8 @@ function validateSettings_(input, cutoffHour) {
   var def = minutesFromCutoff_(timeToMinutes_(v.defaultTime), cutoffHour);
   if (!errors.defaultTime && !errors.closeTime && (def < open || def > close)) errors.defaultTime = 'outside_hours';
   if (v.minGuests > v.maxGuests) errors.maxGuests = 'less_than_min';
+  // 1日の人数上限が1組の最少人数より少ないと、誰も予約できない
+  if (v.maxGuestsPerDay > 0 && v.maxGuestsPerDay < v.minGuests) errors.maxGuestsPerDay = 'less_than_min';
 
   if (Object.keys(errors).length) return { ok: false, errors: errors };
   return { ok: true, value: v };

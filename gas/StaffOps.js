@@ -69,14 +69,18 @@ function staffListReservations_(ctx) {
   if (!date) return errorResponse_('VALIDATION_ERROR', { businessDate: 'invalid' });
   var usersById = indexBy_(readAll_('Users'), 'user_id');
   var cutoff = ctx.config.BUSINESS_DAY_CUTOFF_HOUR;
-  var list = readAll_('Reservations').filter(function (r) {
+  var all = readAll_('Reservations');
+  var list = all.filter(function (r) {
     var at = parseIsoDate_(r.scheduled_at);
     if (!at || businessDateOf_(at, cutoff) !== date) return false;
     // キャストは自分が登録した予約と、自分が担当の予約のみ
     return ctx.user.role !== 'cast' || isOwnReservation_(r, ctx.user);
   }).map(function (r) { return toStaffReservation_(r, usersById); });
   list.sort(function (a, b) { return a.scheduledAt < b.scheduledAt ? -1 : a.scheduledAt > b.scheduledAt ? 1 : 0; });
-  return { ok: true, businessDate: date, reservations: list };
+  var out = { ok: true, businessDate: date, reservations: list };
+  // 店全体の予約数はオーナー・スタッフだけに返す
+  if (ctx.user.role !== 'cast') out.capacity = dayCapacitySummary_(all, date, ctx.config);
+  return out;
 }
 
 function isOwnReservation_(r, user) {
@@ -139,6 +143,9 @@ function staffCreateReservation_(ctx) {
   var nowIso = formatJstIso_(now);
   var resolved = resolveCustomerInput_(input, readAll_('Customers'), nowIso, ctx);
   if (resolved.error) return resolved.error;
+  // 店舗からの登録は上限を超えても止めない（警告だけ返す）
+  var capacityWarnings = capacityProblems_(capacityCounts_(reservations, ctx.config.BUSINESS_DAY_CUTOFF_HOUR),
+    schedule.scheduledAt, schedule.numberOfGuests, ctx.config);
 
   var record = {
     reservation_id: nextReservationId_(reservations, now),
@@ -161,7 +168,7 @@ function staffCreateReservation_(ctx) {
     userId: user.user_id, role: user.role, action: 'reservation.create', targetType: 'reservation',
     targetId: record.reservation_id, after: record, requestId: body.requestId, result: 'success'
   });
-  return { ok: true, replayed: false, reservation: toStaffReservation_(record, usersById) };
+  return { ok: true, replayed: false, reservation: toStaffReservation_(record, usersById), capacityWarnings: capacityWarnings };
 }
 
 // ---------- 来店 ----------

@@ -129,3 +129,4 @@
 .list li.clickable { cursor: pointer; }
 .list li.clickable:active { background: rgba(127,127,127,.12); }
 .pre { white-space: pre-wrap; word-break: break-word; }
+.subhead { font-size: 1rem; margin: 20px 0 4px; }

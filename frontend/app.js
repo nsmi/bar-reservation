@@ -129,24 +129,24 @@
     var c = state.options.constraints;
 
     var today = jstBusinessToday(c.businessDayCutoffHour);
-    // ご来店日は選択式（iPhone の日付入力は枠からはみ出すことがあるため使わない）
+    var slots = buildTimeSlots(c.openTime, c.closeTime, c.timeStepMinutes, c.businessDayCutoffHour);
+    // ご来店日は選択式（iPhone の日付入力は枠からはみ出すことがあるため使わない）。満席の日は選べない
     var dateSelect = $('visit-date');
     var previous = dateSelect.value;
     dateSelect.textContent = '';
+    var firstOpen = '';
     for (var d = 0; d <= c.maxDaysAhead; d++) {
       var ds = addDays(today, d);
-      dateSelect.appendChild(option(ds, formatDateJa(ds).replace(/^\d+年/, '') + (d === 0 ? '（本日）' : d === 1 ? '（明日）' : '')));
+      var full = isDateFull(ds, slots);
+      var o = option(ds, formatDateJa(ds).replace(/^\d+年/, '') + (d === 0 ? '（本日）' : d === 1 ? '（明日）' : '') + (full ? '（満席）' : ''));
+      o.disabled = full;
+      if (!full && !firstOpen) firstOpen = ds;
+      dateSelect.appendChild(o);
     }
-    dateSelect.value = previous && previous >= today && previous <= addDays(today, c.maxDaysAhead) ? previous : today;
-
-    var timeSelect = $('visit-time');
-    timeSelect.textContent = '';
-    buildTimeSlots(c.openTime, c.closeTime, c.timeStepMinutes, c.businessDayCutoffHour)
-      .forEach(function (s) {
-        var o = option(s.value, s.label);
-        if (s.time === c.defaultTime) o.selected = true;
-        timeSelect.appendChild(o);
-      });
+    var prevOption = previous ? dateSelect.querySelector('option[value="' + previous + '"]') : null;
+    dateSelect.value = prevOption && !prevOption.disabled ? previous : (firstOpen || today);
+    $('no-availability').hidden = !!firstOpen;
+    renderTimeOptions();
 
     var guests = $('guests');
     guests.textContent = '';
@@ -154,6 +154,44 @@
 
     $('nickname').maxLength = c.nicknameMaxLength;
     $('note').maxLength = c.noteMaxLength;
+  }
+
+  function fullHoursOf(date) {
+    var a = state.options.availability;
+    return (a && a.fullHours && a.fullHours[date]) || [];
+  }
+
+  /** その日が満席か（1日の上限に達した日、またはすべての時間帯が満席の日） */
+  function isDateFull(date, slots) {
+    var a = state.options.availability;
+    if (a && a.fullDates && a.fullDates.indexOf(date) >= 0) return true;
+    var hours = fullHoursOf(date);
+    return hours.length > 0 && slots.every(function (s) { return hours.indexOf(s.time.slice(0, 2)) >= 0; });
+  }
+
+  /** 選んだ日の時刻の選択肢。満席の時間帯は選べない */
+  function renderTimeOptions() {
+    var c = state.options.constraints;
+    var timeSelect = $('visit-time');
+    var previous = timeSelect.value;
+    var hours = fullHoursOf($('visit-date').value);
+    timeSelect.textContent = '';
+    var pick = '';
+    var fallback = '';
+    var pastDefault = false;
+    // 既定の時刻が満席なら、その後で最初に空いている時刻を選ぶ（なければ最初に空いている時刻）
+    buildTimeSlots(c.openTime, c.closeTime, c.timeStepMinutes, c.businessDayCutoffHour).forEach(function (s) {
+      if (s.time === c.defaultTime) pastDefault = true;
+      var full = hours.indexOf(s.time.slice(0, 2)) >= 0;
+      var o = option(s.value, s.label + (full ? '（満席）' : ''));
+      o.disabled = full;
+      timeSelect.appendChild(o);
+      if (full) return;
+      if (!fallback) fallback = s.value;
+      if (!pick && pastDefault) pick = s.value;
+    });
+    if (previous && timeSelect.querySelector('option[value="' + previous + '"]') && !timeSelect.querySelector('option[value="' + previous + '"]').disabled) pick = previous;
+    timeSelect.value = pick || fallback;
   }
 
   function clearFieldErrors() {
@@ -281,6 +319,19 @@
       case 'AUTH_INVALID':
         setStatus('LINEの認証を確認できませんでした。画面を閉じて、もう一度開き直してください。（' + code + '）', true);
         return;
+      case 'FULLY_BOOKED':
+        // 入力中に満席になった: 空き状況を取り直して、日時を選び直してもらう
+        state.requestId = null;
+        callApi('getFormOptions', {}).then(function (res) {
+          if (res && res.ok) { state.options = res; renderForm(); }
+        }).catch(function () {}).then(function () {
+          backToForm(null);
+          var onlyGuests = error.fields && error.fields.capacity && error.fields.capacity.length === 1 && error.fields.capacity[0] === 'day_guests';
+          setFieldError('scheduledAt', onlyGuests
+            ? 'ご希望の人数では、この日は満席です。人数か日にちを変えてお選びください。'
+            : '申し訳ありません。選択した日時は満席になりました。別の日時をお選びください。');
+        });
+        return;
       case 'LIMIT_EXCEEDED':
         setStatus('ご予約中の件数が上限に達しています。変更はLINEのトークで店舗へご連絡ください。', true);
         return;
@@ -353,6 +404,7 @@
     }
 
     $('reservation-form').addEventListener('submit', onFormSubmit);
+    $('visit-date').addEventListener('change', renderTimeOptions);
     $('btn-submit').addEventListener('click', submitReservation);
     $('btn-back').addEventListener('click', function () { backToForm(null); });
     $('btn-close').addEventListener('click', function () {
