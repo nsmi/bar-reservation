@@ -16,7 +16,8 @@ var EDITABLE_SETTINGS = [
   // 受付上限。0 は上限なし
   { key: 'maxGroupsPerDay',      prop: 'RESERVATION_MAX_GROUPS_PER_DAY',      type: 'int', min: 0, max: 500 },
   { key: 'maxGuestsPerDay',      prop: 'RESERVATION_MAX_GUESTS_PER_DAY',      type: 'int', min: 0, max: 2000 },
-  { key: 'maxGroupsPerHour',     prop: 'RESERVATION_MAX_GROUPS_PER_HOUR',     type: 'int', min: 0, max: 200 }
+  { key: 'maxGroupsPerHour',     prop: 'RESERVATION_MAX_GROUPS_PER_HOUR',     type: 'int', min: 0, max: 200 },
+  { key: 'requireFriendship',    prop: 'RESERVATION_REQUIRE_FRIENDSHIP',      type: 'bool' }
 ];
 
 function timeToMinutes_(hhmm) {
@@ -56,6 +57,8 @@ function validateSettings_(input, cutoffHour) {
     var x = input[d.key];
     if (d.type === 'time') {
       if (typeof x !== 'string' || !TIME_OF_DAY_PATTERN.test(x)) { errors[d.key] = 'invalid'; return; }
+    } else if (d.type === 'bool') {
+      if (typeof x !== 'boolean') { errors[d.key] = 'invalid'; return; }
     } else {
       if (typeof x !== 'number' || !Number.isInteger(x)) { errors[d.key] = 'invalid'; return; }
       if (d.allowed && d.allowed.indexOf(x) < 0) { errors[d.key] = 'invalid'; return; }
@@ -78,6 +81,8 @@ function validateSettings_(input, cutoffHour) {
   if (v.minGuests > v.maxGuests) errors.maxGuests = 'less_than_min';
   // 1日の人数上限が1組の最少人数より少ないと、誰も予約できない
   if (v.maxGuestsPerDay > 0 && v.maxGuestsPerDay < v.minGuests) errors.maxGuestsPerDay = 'less_than_min';
+  // 友だちかどうかは公式LINEのトークンがないと確かめられない
+  if (v.requireFriendship && !isMessagingConfigured_()) errors.requireFriendship = 'not_configured';
 
   if (Object.keys(errors).length) return { ok: false, errors: errors };
   return { ok: true, value: v };
@@ -87,7 +92,8 @@ function staffGetSettings_(ctx) {
   return {
     ok: true,
     settings: currentSettings_(ctx.config),
-    businessDayCutoffHour: ctx.config.BUSINESS_DAY_CUTOFF_HOUR
+    businessDayCutoffHour: ctx.config.BUSINESS_DAY_CUTOFF_HOUR,
+    messagingConfigured: isMessagingConfigured_() // トークンの値そのものは返さない
   };
 }
 

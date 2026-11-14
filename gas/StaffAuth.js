@@ -21,6 +21,7 @@ function staffActions_() {
     'staff.saveCustomerNote':  { roles: ALL,         write: true,  handler: staffSaveCustomerNote_ },
     'staff.listReservations':  { roles: ALL,         write: false, handler: staffListReservations_ },
     'staff.createReservation': { roles: ALL,         write: true,  handler: staffCreateReservation_ },
+    'staff.cancelReservation': { roles: OWNER_STAFF, write: true,  handler: staffCancelReservation_ },
     'staff.listVisits':        { roles: ALL,         write: false, handler: staffListVisits_ },
     'staff.checkIn':           { roles: ALL,         write: true,  handler: staffCheckIn_ },
     'staff.overrideInvitation':{ roles: OWNER,       write: true,  handler: staffOverrideInvitation_ },
@@ -123,7 +124,8 @@ function staffMe_(ctx) {
       amountMax: c.AMOUNT_MAX,
       businessDayCutoffHour: c.BUSINESS_DAY_CUTOFF_HOUR,
       reviewThresholdMinutes: c.REVIEW_THRESHOLD_MINUTES,
-      payoutRatePercent: c.PAYOUT_RATE_PERCENT
+      payoutRatePercent: c.PAYOUT_RATE_PERCENT,
+      messagingConfigured: isMessagingConfigured_()
     }
   };
 }

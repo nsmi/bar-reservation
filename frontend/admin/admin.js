@@ -8,6 +8,7 @@
   'use strict';
 
   var cfg = window.ADMIN_CONFIG || {};
+  var NL_ = String.fromCharCode(10);
   var JST_OFFSET_MS = 9 * 60 * 60 * 1000;
   var REQUEST_TIMEOUT_MS = 25000;
 
@@ -46,7 +47,11 @@
     VERSION_CONFLICT: '他の人が先に変更しました。画面を更新してください。',
     REQUEST_ID_CONFLICT: 'もう一度お試しください。',
     INVITE_INVALID: '招待コードが正しくないか、有効期限切れ・使用済みです。オーナーに再発行を依頼してください。',
-    ALREADY_LINKED: 'このLINEアカウントは別のユーザーとして登録済みです。'
+    ALREADY_LINKED: 'このLINEアカウントは別のユーザーとして登録済みです。',
+    MESSAGE_UNREACHABLE: 'お客様に届けられませんでした（公式LINEを友だち追加していないか、ブロックされています）。予約はキャンセルしていません。',
+    MESSAGE_QUOTA: '公式LINEの今月の送信できる数を超えています。予約はキャンセルしていません。',
+    MESSAGE_FAILED: 'LINEの送信に失敗しました。予約はキャンセルしていません。少し待ってからもう一度お試しください。',
+    MESSAGING_NOT_CONFIGURED: '公式LINEとの連携が設定されていません。予約はキャンセルしていません。'
   };
 
   var state = {
@@ -339,7 +344,8 @@
             h('strong', null, timeLabel(r.scheduledAt, state.date) + '  ' + r.nickname + '（' + r.numberOfGuests + '名）'),
             badge(LABELS.status[r.status] || r.status, r.status === 'reserved' ? '' : 'muted')),
           h('div', { className: 'meta' }, [LABELS.source[r.source] || r.source, cast, r.createdByName ? '登録: ' + r.createdByName : ''].filter(Boolean).join(' / ')),
-          r.note ? h('div', { className: 'meta pre' }, r.note) : null);
+          r.note ? h('div', { className: 'meta pre' }, r.note) : null,
+          r.status === 'reserved' && state.me.role !== 'cast' ? cancelControl(r) : null);
       });
       var title = (state.me.role === 'cast' ? 'あなたの予約' : '予約一覧') + '（' + formatDateJa(state.date) + '）';
       replacePanel(panel, [
@@ -350,6 +356,58 @@
         ])
       ]);
     });
+  }
+
+  /** 予約のキャンセル（オーナー・スタッフ）。LINE で予約したお客様には、公式LINEからお断りの連絡を送れる */
+  function cancelControl(r) {
+    var wrap = h('div');
+    var open = h('button', { type: 'button', className: 'btn small' }, 'キャンセル・お断り');
+    var form = h('div', { className: 'inline-form', hidden: true });
+    open.addEventListener('click', function () { form.hidden = !form.hidden; });
+    var canNotify = r.lineReachable && state.constraints.messagingConfigured;
+    var notify = h('input', { type: 'checkbox', checked: canNotify, disabled: !canNotify });
+    var at = dateOf(r.scheduledAt);
+    var text = h('textarea', { rows: '7', maxlength: '500' });
+    text.value = r.nickname + '様' + NL_ + NL_ +
+      'ご予約いただいた ' + formatDateJa(at) + ' ' + timeOf(r.scheduledAt) + '（' + r.numberOfGuests + '名様）は、' +
+      'あいにく満席のためお受けすることができませんでした。' + NL_ + '大変申し訳ございません。' + NL_ +
+      'またのご来店を心よりお待ちしております。' + NL_ + NL_ + (cfg.SHOP_NAME || '');
+    var textField = fieldEl('送る文面', text, '送る前に内容を確認してください。お客様のLINEにこのまま届きます。');
+    var sync = function () { textField.hidden = !notify.checked; };
+    notify.addEventListener('change', sync);
+    sync();
+    var holder = {};
+    var submit = h('button', { type: 'button', className: 'btn primary' }, '実行する');
+    submit.addEventListener('click', function () {
+      var sending = notify.checked;
+      if (sending && !text.value.trim()) { toast('送る文面を入力してください。', true); return; }
+      var msg = r.nickname + ' 様の予約（' + formatDateJa(at) + ' ' + timeOf(r.scheduledAt) + '）をキャンセルしますか？' +
+        (sending ? NL_ + NL_ + '公式LINEからお客様へ連絡します（取り消せません）。' : NL_ + NL_ + 'お客様への連絡はしません。');
+      if (!window.confirm(msg)) return;
+      submitWrite(submit, holder, 'staff.cancelReservation', function () {
+        return { reservationId: r.reservationId, expectedVersion: r.version, notifyMessage: sending ? text.value : '' };
+      }, function (res) {
+        toast(res.notified ? 'お客様へ連絡し、予約をキャンセルしました。' : '予約をキャンセルしました。');
+        renderPanel();
+      }, {
+        onError: function (err) {
+          // 連絡に失敗した場合は、文面を直して送り直せるよう新しい requestId にする
+          if (/^MESSAG/.test(err.code) || err.code === 'VALIDATION_ERROR') holder.requestId = null;
+          return false;
+        }
+      });
+    });
+    form.appendChild(h('label', { className: 'check' }, notify, ' お客様にLINEで連絡する'));
+    if (!canNotify) {
+      form.appendChild(h('p', { className: 'hint' }, r.lineReachable
+        ? '公式LINEとの連携が設定されていないため、LINEで連絡できません。'
+        : '店舗で登録した予約のため、LINEで連絡できません。'));
+    }
+    form.appendChild(textField);
+    form.appendChild(submit);
+    wrap.appendChild(open);
+    wrap.appendChild(form);
+    return wrap;
   }
 
   var CAPACITY_LABELS = { day_groups: '1日の組数', day_guests: '1日の人数', hour_groups: '1時間あたりの組数' };
@@ -986,7 +1044,8 @@
   var SETTING_LABELS = {
     openTime: '受付開始', closeTime: '最終受付', defaultTime: '最初に表示する時刻', timeStepMinutes: '時間の間隔',
     maxDaysAhead: '何日先まで', minGuests: '最少人数', maxGuests: '最大人数', maxActivePerCustomer: '1人あたりの予約数',
-    maxGroupsPerDay: '1日の上限（組数）', maxGuestsPerDay: '1日の上限（人数）', maxGroupsPerHour: '1時間あたりの上限（組数）'
+    maxGroupsPerDay: '1日の上限（組数）', maxGuestsPerDay: '1日の上限（人数）', maxGroupsPerHour: '1時間あたりの上限（組数）',
+    requireFriendship: '公式LINEの友だちだけ予約できる'
   };
 
   function settingErrorMessage(code, cutoffHour) {
@@ -996,7 +1055,8 @@
       invalid_step: '時間の間隔に合っていません（例: 30分間隔なら 00分か30分）。',
       before_open: '受付開始より後で、営業日の切り替え（' + cutoffHour + ':00）より前にしてください。',
       outside_hours: '受付開始〜最終受付の間にしてください。',
-      less_than_min: '最少人数以上にしてください（0 は上限なし）。'
+      less_than_min: '最少人数以上にしてください（0 は上限なし）。',
+      not_configured: '公式LINEとの連携（チャネルアクセストークン）が設定されていないため、オンにできません。'
     }[code] || '値を確認してください。';
   }
 
@@ -1019,7 +1079,8 @@
         maxActivePerCustomer: num(s.maxActivePerCustomer, 1, 20),
         maxGroupsPerDay: num(s.maxGroupsPerDay, 0, 500),
         maxGuestsPerDay: num(s.maxGuestsPerDay, 0, 2000),
-        maxGroupsPerHour: num(s.maxGroupsPerHour, 0, 200)
+        maxGroupsPerHour: num(s.maxGroupsPerHour, 0, 200),
+        requireFriendship: h('input', { type: 'checkbox', checked: !!s.requireFriendship, disabled: !res.messagingConfigured && !s.requireFriendship })
       };
       var errorsEl = h('ul', { className: 'form-errors', hidden: true });
       var save = h('button', { type: 'button', className: 'btn primary' }, '保存する');
@@ -1028,7 +1089,7 @@
         var next = {};
         Object.keys(inputs).forEach(function (k) {
           var v = inputs[k].value;
-          next[k] = /Time$/.test(k) ? v : (v === '' ? NaN : Number(v));
+          next[k] = k === 'requireFriendship' ? inputs[k].checked : /Time$/.test(k) ? v : (v === '' ? NaN : Number(v));
         });
         errorsEl.hidden = true;
         errorsEl.textContent = '';
@@ -1068,6 +1129,12 @@
         fieldEl(SETTING_LABELS.maxGroupsPerDay, inputs.maxGroupsPerDay),
         fieldEl(SETTING_LABELS.maxGuestsPerDay, inputs.maxGuestsPerDay, '人数が入りきらない予約は受け付けません。'),
         fieldEl(SETTING_LABELS.maxGroupsPerHour, inputs.maxGroupsPerHour, '21:00〜21:59 のように、同じ時台の予約を数えます。'),
+        h('h3', { className: 'subhead' }, '公式LINE'),
+        h('p', { className: 'hint' }, res.messagingConfigured
+          ? '公式LINEと連携しています。予約一覧の「キャンセル・お断り」から、LINEで予約したお客様へ連絡できます。'
+          : '公式LINEとの連携が設定されていません（GAS のスクリプトプロパティ LINE_MESSAGING_ACCESS_TOKEN）。'),
+        h('label', { className: 'check' }, inputs.requireFriendship, ' ' + SETTING_LABELS.requireFriendship),
+        h('p', { className: 'hint' }, 'オンにすると、友だち追加していないお客様には予約画面で友だち追加をお願いし、予約は受け付けません。'),
         errorsEl,
         save
       ])]);

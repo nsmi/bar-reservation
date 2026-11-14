@@ -47,9 +47,13 @@ function staffListCustomers_() {
 
 // ---------- 予約 ----------
 
-function toStaffReservation_(r, usersById) {
+function toStaffReservation_(r, usersById, customersById) {
   var castId = r.assigned_cast_id || r.requested_cast_id;
+  var customer = customersById ? customersById[r.customer_id] : null;
   return {
+    version: Number(r.version),
+    // 公式LINEから連絡できるか（LINE で予約したお客様か）。IDそのものは返さない
+    lineReachable: !!(customer && customer.line_user_id),
     reservationId: r.reservation_id,
     scheduledAt: r.scheduled_at,
     nickname: r.nickname,
@@ -70,12 +74,13 @@ function staffListReservations_(ctx) {
   var usersById = indexBy_(readAll_('Users'), 'user_id');
   var cutoff = ctx.config.BUSINESS_DAY_CUTOFF_HOUR;
   var all = readAll_('Reservations');
+  var customersById = indexBy_(readAll_('Customers'), 'customer_id');
   var list = all.filter(function (r) {
     var at = parseIsoDate_(r.scheduled_at);
     if (!at || businessDateOf_(at, cutoff) !== date) return false;
     // キャストは自分が登録した予約と、自分が担当の予約のみ
     return ctx.user.role !== 'cast' || isOwnReservation_(r, ctx.user);
-  }).map(function (r) { return toStaffReservation_(r, usersById); });
+  }).map(function (r) { return toStaffReservation_(r, usersById, customersById); });
   list.sort(function (a, b) { return a.scheduledAt < b.scheduledAt ? -1 : a.scheduledAt > b.scheduledAt ? 1 : 0; });
   var out = { ok: true, businessDate: date, reservations: list };
   // 店全体の予約数はオーナー・スタッフだけに返す

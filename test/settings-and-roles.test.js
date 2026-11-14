@@ -24,7 +24,7 @@ function setup() {
 const DEFAULTS = {
   openTime: '18:00', closeTime: '04:00', defaultTime: '21:00', timeStepMinutes: 15,
   maxDaysAhead: 60, minGuests: 1, maxGuests: 10, maxActivePerCustomer: 3,
-  maxGroupsPerDay: 0, maxGuestsPerDay: 0, maxGroupsPerHour: 0
+  maxGroupsPerDay: 0, maxGuestsPerDay: 0, maxGroupsPerHour: 0, requireFriendship: false
 };
 
 const customerReservation = (c, time, date = '2026-11-08') => c.post({

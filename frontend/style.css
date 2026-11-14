@@ -146,3 +146,6 @@ input:focus, select:focus, textarea:focus {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* リンクをボタンの見た目にする（友だち追加） */
+a.btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }

@@ -7,6 +7,8 @@
  *   LINE_STAFF_CHANNEL_ID  店舗用 LINEミニアプリ チャネルのチャネルID（数字）
  * 任意（未設定時は CONFIG_DEFAULTS を使用）:
  *   BUSINESS_DAY_CUTOFF_HOUR など下記のキー
+ * 公式LINEと連携する場合（gas/Messaging.js）:
+ *   LINE_MESSAGING_ACCESS_TOKEN  Messaging API のチャネルアクセストークン（長期）。秘密情報
  */
 var TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -26,6 +28,8 @@ var CONFIG_DEFAULTS = {
   RESERVATION_MAX_GROUPS_PER_DAY: 0,
   RESERVATION_MAX_GUESTS_PER_DAY: 0,
   RESERVATION_MAX_GROUPS_PER_HOUR: 0,
+  // 公式LINEの友だちだけが予約できる（LINE_MESSAGING_ACCESS_TOKEN が必要）
+  RESERVATION_REQUIRE_FRIENDSHIP: false,
   NICKNAME_MAX_LENGTH: 20,
   NOTE_MAX_LENGTH: 200,
   LOCK_WAIT_MS: 10000,
@@ -45,6 +49,11 @@ function getConfig_() {
     var raw = props[key];
     if (raw === undefined || raw === null || raw === '') {
       cfg[key] = CONFIG_DEFAULTS[key];
+      return;
+    }
+    if (typeof CONFIG_DEFAULTS[key] === 'boolean') {
+      if (!/^(true|false)$/.test(String(raw))) throw new Error('CONFIG: ' + key + ' is not true/false');
+      cfg[key] = String(raw) === 'true';
       return;
     }
     if (typeof CONFIG_DEFAULTS[key] === 'string') {

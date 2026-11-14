@@ -50,6 +50,8 @@ function handleRequest_(e) {
         return handleGetFormOptions_();
       case 'createReservation':
         return handleCreateReservation_(body);
+      case 'checkFriendship':
+        return handleCheckFriendship_(body);
       default:
         return errorResponse_('UNKNOWN_ACTION');
     }

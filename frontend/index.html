@@ -21,6 +21,16 @@
       <p id="error-message" class="error-text" role="alert"></p>
     </section>
 
+    <section id="view-friend" class="card" hidden>
+      <h2>友だち追加のお願い</h2>
+      <p>ご予約は、店舗の公式LINEアカウントを友だち追加いただいた方のみ承っております。
+        満席などでご予約をお受けできない場合のご連絡も、公式LINEからお送りします。</p>
+      <a id="friend-link" class="btn primary" href="#" hidden>友だち追加する</a>
+      <p id="friend-no-link" class="notice" hidden>店舗の公式LINEアカウントを友だち追加してから、もう一度お開きください。</p>
+      <p id="friend-status" class="status" role="status" aria-live="polite"></p>
+      <button type="button" id="btn-friend-recheck" class="btn">友だち追加しました（予約へ進む）</button>
+    </section>
+
     <section id="view-form" class="card" hidden>
       <form id="reservation-form" novalidate>
         <div class="field">

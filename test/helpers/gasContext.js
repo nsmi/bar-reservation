@@ -105,7 +105,10 @@ function createGasContext(options = {}) {
   const ss = new FakeSpreadsheet();
   const fetchCalls = [];
   const lockState = { available: true, held: 0 };
-  const fetchHandler = options.fetchHandler || makeLineVerifyHandler(options.tokens || {}, getNow);
+  const verifyHandler = makeLineVerifyHandler(options.tokens || {}, getNow);
+  // lineApi: 本人確認以外の LINE API（Messaging API など）の模擬。(url, opts) => response
+  const fetchHandler = options.fetchHandler || ((url, opts) => (
+    url === 'https://api.line.me/oauth2/v2.1/verify' || !options.lineApi ? verifyHandler(url, opts) : options.lineApi(url, opts)));
   const logs = [];
 
   const sandbox = {
@@ -185,4 +188,4 @@ function createGasContext(options = {}) {
 /** vm 内で生成されたオブジェクトを通常のオブジェクトに変換（deepStrictEqual 用） */
 const plain = (x) => JSON.parse(JSON.stringify(x));
 
-module.exports = { createGasContext, makeLineVerifyHandler, plain, CHANNEL_ID, STAFF_CHANNEL_ID, DEFAULT_NOW };
+module.exports = { createGasContext, makeLineVerifyHandler, response, plain, CHANNEL_ID, STAFF_CHANNEL_ID, DEFAULT_NOW };

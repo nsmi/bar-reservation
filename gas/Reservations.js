@@ -30,6 +30,7 @@ function handleGetFormOptions_() {
     ok: true,
     casts: [], // 希望キャストは廃止。古い画面（キャッシュ）が casts を参照しても壊れないよう空配列を返す
     availability: publicAvailability_(readAll_('Reservations'), config, now_()), // 満席の日・時間帯（件数は返さない）
+    requireFriendship: config.RESERVATION_REQUIRE_FRIENDSHIP,
     constraints: {
       minGuests: config.RESERVATION_MIN_GUESTS,
       maxGuests: config.RESERVATION_MAX_GUESTS,
@@ -69,6 +70,9 @@ function handleCreateReservation_(body) {
   // 2. 入力検証（時刻の前後関係はサーバー時刻で判定）
   var v = validateReservationInput_(body.reservation, now_(), config);
   if (!v.ok) return errorResponse_('VALIDATION_ERROR', v.errors);
+
+  // 2-2. 公式LINEの友だち限定（外部通信なのでロックの外で確かめる）
+  if (!friendshipAllowsReservation_(config, auth.sub)) return errorResponse_('NOT_FRIEND');
 
   // 3. 排他制御下で照合・保存
   var lock = LockService.getScriptLock();

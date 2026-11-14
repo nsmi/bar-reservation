@@ -11,7 +11,7 @@
   var cfg = window.APP_CONFIG || {};
   var JST_OFFSET_MS = 9 * 60 * 60 * 1000;
   var REQUEST_TIMEOUT_MS = 25000;
-  var VIEWS = ['view-loading', 'view-error', 'view-form', 'view-confirm', 'view-done'];
+  var VIEWS = ['view-loading', 'view-error', 'view-friend', 'view-form', 'view-confirm', 'view-done'];
 
   var state = {
     options: null,   // getFormOptions の結果
@@ -332,6 +332,10 @@
             : '申し訳ありません。選択した日時は満席になりました。別の日時をお選びください。');
         });
         return;
+      case 'NOT_FRIEND':
+        state.requestId = null;
+        showFriendGate();
+        return;
       case 'LIMIT_EXCEEDED':
         setStatus('ご予約中の件数が上限に達しています。変更はLINEのトークで店舗へご連絡ください。', true);
         return;
@@ -390,6 +394,33 @@
     $('done-nickname').textContent = r.nickname;
   }
 
+  // ---------- 友だち限定 ----------
+
+  function showFriendGate() {
+    var url = cfg.FRIEND_ADD_URL || '';
+    var link = $('friend-link');
+    var valid = /^https:\/\/(lin\.ee|line\.me)\//.test(url);
+    link.hidden = !valid;
+    if (valid) link.href = url;
+    $('friend-no-link').hidden = valid;
+    $('friend-status').textContent = '';
+    show('view-friend');
+  }
+
+  /** 友だちか確かめて、予約フォームか友だち追加のお願いを表示する */
+  function checkFriendshipAndShow() {
+    var idToken = liff.getIDToken();
+    if (!idToken) {
+      showFatal('LINEの認証情報を取得できませんでした。画面を閉じて、もう一度開き直してください。');
+      return Promise.resolve();
+    }
+    return callApi('checkFriendship', { idToken: idToken }).then(function (res) {
+      if (res && res.ok && !res.friend) { showFriendGate(); return; }
+      // 判定できなかったときは予約フォームへ（最終的な判定は予約の送信時にサーバーが行う）
+      show('view-form');
+    }, function () { show('view-form'); });
+  }
+
   // ---------- 起動 ----------
 
   function init() {
@@ -405,6 +436,20 @@
 
     $('reservation-form').addEventListener('submit', onFormSubmit);
     $('visit-date').addEventListener('change', renderTimeOptions);
+    $('btn-friend-recheck').addEventListener('click', function () {
+      var btn = $('btn-friend-recheck');
+      btn.disabled = true;
+      $('friend-status').textContent = '確認しています…';
+      var idToken = liff.getIDToken();
+      callApi('checkFriendship', { idToken: idToken }).then(function (res) {
+        if (res && res.ok && res.friend) { show('view-form'); return; }
+        $('friend-status').textContent = res && res.ok
+          ? 'まだ友だち追加が確認できません。追加してから、もう一度押してください。'
+          : '確認できませんでした。少し待ってからもう一度押してください。';
+      }, function () {
+        $('friend-status').textContent = '通信を確認できませんでした。電波の良い場所でもう一度押してください。';
+      }).finally(function () { btn.disabled = false; });
+    });
     $('btn-submit').addEventListener('click', submitReservation);
     $('btn-back').addEventListener('click', function () { backToForm(null); });
     $('btn-close').addEventListener('click', function () {
@@ -425,6 +470,7 @@
         if (!res || !res.ok) throw new Error('options');
         state.options = res;
         renderForm();
+        if (res.requireFriendship) return checkFriendshipAndShow();
         show('view-form');
       })
       .catch(function () {
