@@ -54,9 +54,8 @@ test('人数: 1〜10 の整数のみ', () => {
   assert.equal(errorsOf({ ...valid(), numberOfGuests: '2' }).numberOfGuests, 'invalid');
 });
 
-test('希望キャストと備考', () => {
-  assert.equal(errorsOf({ ...valid(), requestedCastId: 'USR-0001' }).requestedCastId, undefined);
-  assert.equal(errorsOf({ ...valid(), requestedCastId: '=HYPERLINK()' }).requestedCastId, 'invalid');
+test('備考（希望キャストは廃止したので検証も保存もしない）', () => {
+  assert.equal(errorsOf({ ...valid(), requestedCastId: '=HYPERLINK()' }).requestedCastId, undefined);
   assert.equal(errorsOf({ ...valid(), note: 'あ'.repeat(201) }).note, 'too_long');
   assert.equal(errorsOf({ ...valid(), note: '1行目\r\n2行目' }).note, undefined);
 });

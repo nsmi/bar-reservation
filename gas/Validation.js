@@ -81,7 +81,7 @@ function validateScheduleFields_(input, now, config, errors) {
 
 /**
  * 顧客向け予約入力を検証する。
- * クライアントが送る未知のフィールド（lineUserId、createdAt、assignedCastId など）は一切読まない。
+ * クライアントが送る未知のフィールド（lineUserId、createdAt、assignedCastId、廃止した requestedCastId など）は一切読まない。
  * @return {{ok: true, value: Object} | {ok: false, errors: Object}}
  */
 function validateReservationInput_(input, now, config) {
@@ -95,17 +95,6 @@ function validateReservationInput_(input, now, config) {
 
   var schedule = validateScheduleFields_(input, now, config, errors);
 
-  // 希望キャスト（任意）。存在確認はロック内で Users シートと照合する。
-  var requestedCastId = '';
-  var rc = input.requestedCastId;
-  if (rc !== undefined && rc !== null && rc !== '') {
-    if (typeof rc !== 'string' || !USER_ID_PATTERN.test(rc)) {
-      errors.requestedCastId = 'invalid';
-    } else {
-      requestedCastId = rc;
-    }
-  }
-
   if (Object.keys(errors).length > 0) return { ok: false, errors: errors };
   return {
     ok: true,
@@ -113,7 +102,6 @@ function validateReservationInput_(input, now, config) {
       nickname: nickname.value,
       scheduledAt: schedule.scheduledAt,
       numberOfGuests: schedule.numberOfGuests,
-      requestedCastId: requestedCastId,
       note: schedule.note
     }
   };

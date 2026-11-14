@@ -147,12 +147,6 @@
     guests.textContent = '';
     for (var g = c.minGuests; g <= c.maxGuests; g++) guests.appendChild(option(String(g), g + '名'));
 
-    var castSelect = $('requested-cast');
-    castSelect.textContent = '';
-    castSelect.appendChild(option('', '指定なし'));
-    state.options.casts.forEach(function (cast) { castSelect.appendChild(option(cast.castId, cast.displayName)); });
-    $('cast-field').hidden = state.options.casts.length === 0;
-
     $('nickname').maxLength = c.nicknameMaxLength;
     $('note').maxLength = c.noteMaxLength;
   }
@@ -176,7 +170,6 @@
     nickname: 'お名前を確認してください。',
     scheduledAt: '日時を確認してください（過去の日時や受付期間外は選べません）。',
     numberOfGuests: '人数を確認してください。',
-    requestedCastId: '選択したキャストは現在お選びいただけません。',
     note: '備考を確認してください。'
   };
 
@@ -205,9 +198,6 @@
     var note = $('note').value.trim();
     if (Array.from(note).length > c.noteMaxLength) errors.note = c.noteMaxLength + '文字以内で入力してください。';
 
-    var castId = $('requested-cast').value;
-    var castName = castId ? $('requested-cast').selectedOptions[0].textContent : '';
-
     return {
       errors: errors,
       draft: {
@@ -216,14 +206,12 @@
           date: actualDate,
           time: time,
           numberOfGuests: Number($('guests').value),
-          requestedCastId: castId,
           note: note
         },
         display: {
           datetime: visitDate
             ? formatDateJa(visitDate) + ' ' + (dayOffset ? '翌' + time + '（' + formatDateJa(actualDate) + ' ' + time + '）' : time)
-            : '',
-          castName: castName || '指定なし'
+            : ''
         }
       }
     };
@@ -251,7 +239,6 @@
     $('confirm-nickname').textContent = d.payload.nickname;
     $('confirm-datetime').textContent = d.display.datetime;
     $('confirm-guests').textContent = d.payload.numberOfGuests + '名';
-    $('confirm-cast').textContent = d.display.castName;
     $('confirm-note').textContent = d.payload.note || 'なし';
     setStatus('');
   }

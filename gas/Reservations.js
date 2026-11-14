@@ -1,7 +1,8 @@
 /**
  * 顧客向け LINE 予約。
  * - source は常に 'line_customer'（呼び候補にはならない）。
- * - 希望キャスト(requested_cast_id)は保存するが、assigned_cast_id は設定しない。
+ * - assigned_cast_id は設定しない。希望キャストの受け付けは 2026-11-15 に廃止（requested_cast_id は常に空。
+ *   それ以前の予約に保存された値は、顧客タブの「担当の顧客」の判定にだけ使う）。
  * - 予約ID・登録日時・状態はサーバー側で決める。
  * - request_id を予約行に保存し、同一リクエストの再送では既存予約を返す（二重登録防止）。
  */
@@ -12,37 +13,22 @@ var RESERVATION_STATUS = {
   NO_SHOW: 'no_show'
 };
 
-function listActiveCasts_(users) {
-  return users
-    .filter(function (u) { return u.role === 'cast' && isTruthyCell_(u.active); })
-    .map(function (u) { return { castId: u.user_id, displayName: u.display_name }; });
-}
-
-function castDisplayName_(users, userId) {
-  if (!userId) return '';
-  for (var i = 0; i < users.length; i++) {
-    if (users[i].user_id === userId) return users[i].display_name;
-  }
-  return '';
-}
-
-function toPublicReservation_(r, castName) {
+function toPublicReservation_(r) {
   return {
     reservationId: r.reservation_id,
     scheduledAt: r.scheduled_at,
     numberOfGuests: Number(r.number_of_guests),
     nickname: r.nickname,
-    requestedCastName: castName || '',
     note: r.note
   };
 }
 
-/** 予約フォームの選択肢。キャストは表示名とIDのみ返す。認証不要。 */
+/** 予約フォームの選択肢。認証不要。従業員の名前は返さない。 */
 function handleGetFormOptions_() {
   var config = getConfig_();
   return {
     ok: true,
-    casts: listActiveCasts_(readAll_('Users')),
+    casts: [], // 希望キャストは廃止。古い画面（キャッシュ）が casts を参照しても壊れないよう空配列を返す
     constraints: {
       minGuests: config.RESERVATION_MIN_GUESTS,
       maxGuests: config.RESERVATION_MAX_GUESTS,
@@ -92,7 +78,6 @@ function handleCreateReservation_(body) {
     var customers = readAll_('Customers');
     var customer = findCustomerByLineUserId_(customers, auth.sub);
     var reservations = readAll_('Reservations');
-    var users = readAll_('Users');
 
     // 3-1. 同一リクエストIDの再送
     var prior = null;
@@ -104,23 +89,13 @@ function handleCreateReservation_(body) {
         return {
           ok: true,
           replayed: true,
-          reservation: toPublicReservation_(prior, castDisplayName_(users, prior.requested_cast_id))
+          reservation: toPublicReservation_(prior)
         };
       }
       return errorResponse_('REQUEST_ID_CONFLICT');
     }
 
-    // 3-2. 希望キャストの存在確認
-    var castName = '';
-    if (v.value.requestedCastId) {
-      var casts = listActiveCasts_(users);
-      for (var j = 0; j < casts.length; j++) {
-        if (casts[j].castId === v.value.requestedCastId) { castName = casts[j].displayName; break; }
-      }
-      if (!castName) return errorResponse_('VALIDATION_ERROR', { requestedCastId: 'unknown' });
-    }
-
-    // 3-3. 既存顧客の状態と予約件数上限
+    // 3-2. 既存顧客の状態と予約件数上限
     if (customer) {
       if (!isTruthyCell_(customer.active)) return errorResponse_('CUSTOMER_INACTIVE');
       var activeCount = reservations.filter(function (r) {
@@ -140,7 +115,7 @@ function handleCreateReservation_(body) {
       });
     }
 
-    // 3-4. 予約保存
+    // 3-3. 予約保存
     var record = {
       reservation_id: nextReservationId_(reservations, now),
       request_id: body.requestId,
@@ -151,7 +126,7 @@ function handleCreateReservation_(body) {
       source: 'line_customer',
       created_by_user_id: '',
       assigned_cast_id: '',
-      requested_cast_id: v.value.requestedCastId,
+      requested_cast_id: '', // 希望キャストは廃止
       created_at: nowIso,
       status: RESERVATION_STATUS.RESERVED,
       note: v.value.note,
@@ -164,7 +139,7 @@ function handleCreateReservation_(body) {
       after: record, requestId: body.requestId, result: 'success'
     });
 
-    return { ok: true, replayed: false, reservation: toPublicReservation_(record, castName) };
+    return { ok: true, replayed: false, reservation: toPublicReservation_(record) };
   } finally {
     lock.releaseLock();
   }

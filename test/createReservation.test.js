@@ -39,7 +39,7 @@ test('予約が1件保存され、予約完了情報が返る', () => {
   assert.equal(res.reservation.reservationId, 'R-20261107-001');
   assert.equal(res.reservation.scheduledAt, '2026-11-10T21:00:00+09:00');
   assert.equal(res.reservation.numberOfGuests, 2);
-  assert.equal(res.reservation.requestedCastName, 'あや');
+  assert.equal(res.reservation.requestedCastName, undefined);
 
   const rows = c.rows('Reservations');
   assert.equal(rows.length, 1);
@@ -47,7 +47,7 @@ test('予約が1件保存され、予約完了情報が返る', () => {
   assert.equal(r.customer_id, 'CUST-0001');
   assert.equal(r.source, 'line_customer');
   assert.equal(r.assigned_cast_id, '', '顧客予約では担当キャストを設定しない');
-  assert.equal(r.requested_cast_id, 'USR-0002');
+  assert.equal(r.requested_cast_id, '', '希望キャストは廃止');
   assert.equal(r.status, 'reserved');
   assert.equal(r.created_at, '2026-11-07T12:00:00+09:00', 'サーバー時刻で記録');
   assert.equal(r.version, 1);
@@ -158,14 +158,13 @@ test('不正な値は VALIDATION_ERROR で、保存されない', () => {
   assert.equal(c.rows('Reservations').length, 0);
 });
 
-test('無効・存在しない希望キャストは拒否', () => {
+test('希望キャストは廃止: 送られてきても保存しない（古い画面からの送信も予約は成功）', () => {
   const c = setup();
-  for (const castId of ['USR-0003', 'USR-9999', 'USR-0001']) {
-    const res = c.post(body({ reservation: { ...body().reservation, requestedCastId: castId } }));
-    assert.equal(res.error.code, 'VALIDATION_ERROR', castId);
-    assert.equal(res.error.fields.requestedCastId, 'unknown');
+  for (const castId of ['USR-0002', 'USR-9999', '=HYPERLINK()']) {
+    const res = c.post(body({ requestId: crypto.randomUUID(), reservation: { ...body().reservation, requestedCastId: castId } }));
+    assert.equal(res.ok, true, castId + ' ' + JSON.stringify(res));
   }
-  assert.equal(c.rows('Reservations').length, 0);
+  assert.deepEqual(c.rows('Reservations').map((r) => r.requested_cast_id), ['', '', '']);
 });
 
 test('有効な予約は1顧客3件まで', () => {
@@ -226,11 +225,12 @@ test('LINE_CHANNEL_ID 未設定なら INTERNAL（設定値の不備を外部に�
   assert.equal(c.post(body()).error.code, 'INTERNAL');
 });
 
-test('getFormOptions は有効なキャストの表示名とIDだけを返す', () => {
+test('getFormOptions は従業員の名前を返さない（希望キャストは廃止）', () => {
   const c = setup();
   const res = c.post({ action: 'getFormOptions' });
   assert.equal(res.ok, true);
-  assert.deepEqual(res.casts, [{ castId: 'USR-0002', displayName: 'あや' }]);
+  assert.deepEqual(res.casts, []);
+  assert.ok(!JSON.stringify(res).includes('あや'));
   assert.equal(res.constraints.maxGuests, 10);
   assert.ok(!JSON.stringify(res).includes('@example.com'), 'メールアドレスを返さない');
 });

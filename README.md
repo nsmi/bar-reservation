@@ -61,7 +61,7 @@ npm test
    - 次のユーザーとして実行: **自分**
    - アクセスできるユーザー: **全員**
    - 発行された `https://script.google.com/macros/s/.../exec` を控える
-8. `Users` シートにキャストを手入力（予約画面の希望キャスト選択肢になる）
+8. `Users` シートにキャストを手入力（店舗用画面の「ユーザー」タブからも追加できる）
    | user_id | login_identifier | display_name | role | active |
    |---|---|---|---|---|
    | USR-0001 | （メール） | オーナー | owner | TRUE |
