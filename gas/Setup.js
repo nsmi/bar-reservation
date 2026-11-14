@@ -6,15 +6,12 @@ function setupSheets() {
   var ss = getSpreadsheet_();
   ss.setSpreadsheetTimeZone('Asia/Tokyo');
   Object.keys(SCHEMAS).forEach(function (name) {
-    var schema = SCHEMAS[name];
     var sheet = ss.getSheetByName(name);
     if (!sheet) {
-      sheet = ss.insertSheet(name);
-      sheet.getRange(1, 1, 1, schema.length).setValues([schema]).setFontWeight('bold');
-      sheet.setFrozenRows(1);
+      createSheetWithHeader_(ss, name);
       return;
     }
-    assertHeader_(sheet, schema, name);
+    assertHeader_(sheet, SCHEMAS[name], name);
   });
 }
 

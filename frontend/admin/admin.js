@@ -32,7 +32,8 @@
       owner_proxy_reservation: 'オーナーが担当者の名前で事前予約',
       owner_override: 'オーナーが判定を変更'
     },
-    payment: { cash: '現金', card: 'カード', qr: 'QR決済', other: 'その他' }
+    payment: { cash: '現金', card: 'カード', qr: 'QR決済', other: 'その他' },
+    age: { '': '未設定', '20s': '20代', '30s': '30代', '40s': '40代', '50s': '50代', '60s': '60代以上' }
   };
 
   var ERROR_MESSAGES = {
@@ -54,7 +55,9 @@
     currentBusinessDate: null,
     date: null,
     tab: null,
-    customers: null
+    customers: null,
+    customerId: null,      // 顧客タブで開いている顧客
+    customerFilter: { q: '', assignee: '' }
   };
 
   // ---------- 汎用 ----------
@@ -293,6 +296,7 @@
     { id: 'visits', label: '来店', roles: ['owner', 'staff', 'cast'], render: renderVisits },
     { id: 'payments', label: '会計', roles: ['owner', 'staff'], render: renderPayments },
     { id: 'summary', label: '集計', roles: ['owner', 'staff', 'cast'], render: renderSummary },
+    { id: 'customers', label: '顧客', roles: ['owner', 'staff', 'cast'], render: renderCustomers },
     { id: 'users', label: 'ユーザー', roles: ['owner'], render: renderUsers },
     { id: 'settings', label: '設定', roles: ['owner'], render: renderSettings }
   ];
@@ -305,7 +309,7 @@
     TABS.filter(function (t) { return t.roles.indexOf(state.me.role) >= 0; }).forEach(function (t) {
       nav.appendChild(h('button', {
         type: 'button', role: 'tab', 'aria-selected': String(state.tab === t.id),
-        onclick: function () { state.tab = t.id; renderTabs(); renderPanel(); }
+        onclick: function () { state.tab = t.id; state.customerId = null; renderTabs(); renderPanel(); }
       }, t.label));
     });
   }
@@ -667,6 +671,198 @@
           : h('p', { className: 'empty' }, '要確認の来店はありません。'))
       ]);
     });
+  }
+
+  // ---------- 顧客 ----------
+
+  function renderCustomers(panel) {
+    if (state.customerId) { renderCustomerDetail(panel, state.customerId); return; }
+    var isCast = state.me.role === 'cast';
+    var f = state.customerFilter;
+    Promise.all([
+      api('staff.listCustomerProfiles', { assigneeUserId: isCast ? '' : f.assignee }),
+      state.me.role === 'owner' ? api('staff.listUsers') : Promise.resolve(null)
+    ]).then(function (r) {
+      var res = r[0];
+      if (!res) return;
+      var search = h('input', { type: 'search', placeholder: 'あだ名・好きなお酒で絞り込み', value: f.q });
+      var listEl = h('ul', { className: 'list' });
+      var countEl = h('p', { className: 'hint' });
+
+      function fill() {
+        var q = search.value.trim();
+        f.q = q;
+        listEl.textContent = '';
+        var shown = res.customers.filter(function (c) {
+          return !q || c.nickname.indexOf(q) >= 0 || (c.favoriteDrink || '').indexOf(q) >= 0;
+        });
+        countEl.textContent = shown.length + '人';
+        shown.forEach(function (c) {
+          var li = h('li', { className: 'clickable', role: 'button', tabindex: '0' },
+            h('div', { className: 'row' },
+              h('strong', null, c.nickname),
+              h('span', { className: 'meta' }, c.visitCount ? '来店 ' + c.visitCount + '回' : '来店なし')),
+            h('div', { className: 'meta' }, [
+              c.lastVisitDate ? '最終来店 ' + formatDateJa(c.lastVisitDate) : '',
+              c.ageGroup ? LABELS.age[c.ageGroup] || c.ageGroup : '',
+              c.favoriteDrink ? '好み: ' + c.favoriteDrink : '',
+              c.assigneeNames && c.assigneeNames.length ? '担当: ' + c.assigneeNames.join('・') : ''
+            ].filter(Boolean).join(' / ')),
+            h('div', { className: 'meta' }, '会計合計 ' + yen(c.totalSales) + ' / ' + (isCast || f.assignee ? '担当の呼び売上 ' : '呼び売上 ') + yen(c.invitedSales)));
+          var open = function () { state.customerId = c.customerId; renderPanel(); window.scrollTo(0, 0); };
+          li.addEventListener('click', open);
+          li.addEventListener('keydown', function (e) { if (e.key === 'Enter') open(); });
+          listEl.appendChild(li);
+        });
+        if (!shown.length) listEl.appendChild(h('li', { className: 'empty' }, isCast ? '担当のお客様はまだいません。' : '該当するお客様はいません。'));
+      }
+      search.addEventListener('input', fill);
+
+      var controls = [fieldEl('検索', search)];
+      if (r[1]) {
+        var opts = [{ value: '', label: 'すべてのお客様' }].concat(r[1].users.map(function (u) {
+          return { value: u.userId, label: u.displayName + 'の担当（' + (LABELS.role[u.role] || u.role) + (u.active ? '' : '・無効') + '）' };
+        }));
+        var assignee = selectEl(opts, f.assignee);
+        assignee.addEventListener('change', function () { f.assignee = assignee.value; renderPanel(); });
+        controls.unshift(fieldEl('担当者', assignee));
+      }
+      fill();
+      replacePanel(panel, [card(isCast ? 'あなたのお客様' : 'お客様', controls.concat([
+        isCast ? h('p', { className: 'hint' }, 'あなたの呼びで来店した方、あなたの予約・担当の予約がある方、予約であなたを希望した方が表示されます。') : null,
+        countEl,
+        listEl
+      ]))]);
+    });
+  }
+
+  function renderCustomerDetail(panel, customerId) {
+    api('staff.getCustomer', { customerId: customerId }).then(function (res) {
+      if (!res) { state.customerId = null; return; }
+      var c = res.customer;
+      var back = h('button', { type: 'button', className: 'btn small' }, '← 一覧へ');
+      back.addEventListener('click', function () { state.customerId = null; renderPanel(); });
+
+      var paid = res.visits.filter(function (v) { return v.totalAmount !== null; });
+      var total = paid.reduce(function (s, v) { return s + v.totalAmount; }, 0);
+      var mineTotal = paid.filter(function (v) { return v.mine && v.invitationType === 'cast_invited'; })
+        .reduce(function (s, v) { return s + v.totalAmount; }, 0);
+
+      var head = card(c.nickname, [
+        h('div', { className: 'stats' },
+          stat('来店', res.visits.length + '回'),
+          stat('最終来店', res.visits.length ? formatDateJa(res.visits[0].businessDate) : '—'),
+          stat('会計合計', yen(total)),
+          stat('あなたの呼び売上', yen(mineTotal))),
+        h('p', { className: 'meta' }, [c.customerId, c.hasLine ? 'LINE予約あり' : '', c.createdAt ? '登録 ' + formatDateJa(dateOf(c.createdAt)) : ''].filter(Boolean).join(' / '))
+      ], back);
+
+      var visitItems = res.visits.map(function (v) {
+        var who = v.invitationType === 'cast_invited' ? (v.mine ? 'あなたの呼び' : (v.attributedCastName ? '担当: ' + v.attributedCastName : '他の担当')) : '';
+        return h('li', null,
+          h('div', { className: 'row' },
+            h('span', null, formatDateJa(v.businessDate) + ' ', typeBadge(v.invitationType)),
+            h('strong', { className: 'amount' }, v.totalAmount === null ? '未会計' : yen(v.totalAmount))),
+          h('div', { className: 'meta' }, [who, v.castDrinkAmount ? 'うちキャストドリンク ' + yen(v.castDrinkAmount) : ''].filter(Boolean).join(' / ')));
+      });
+      var resvItems = res.reservations.map(function (r) {
+        var cast = r.castName ? (r.castKind === 'assigned' ? '担当: ' : '希望: ') + r.castName : '';
+        return h('li', null,
+          h('div', { className: 'row' },
+            h('span', null, formatDateJa(dateOf(r.scheduledAt)) + ' ' + timeOf(r.scheduledAt) + '（' + r.numberOfGuests + '名）'),
+            badge(LABELS.status[r.status] || r.status, r.status === 'reserved' ? '' : 'muted')),
+          h('div', { className: 'meta' }, [LABELS.source[r.source] || r.source, cast].filter(Boolean).join(' / ')));
+      });
+
+      replacePanel(panel, [
+        head,
+        sharedMemoCard(c, res.permissions),
+        myNoteCard(c.customerId, res.myNote),
+        card('来店履歴', visitItems.length ? h('ul', { className: 'list' }, visitItems) : h('p', { className: 'empty' }, '来店はありません。')),
+        card(state.me.role === 'cast' ? 'あなたの予約' : '予約履歴', resvItems.length ? h('ul', { className: 'list' }, resvItems) : h('p', { className: 'empty' }, '予約はありません。'))
+      ]);
+    });
+  }
+
+  var CUSTOMER_FIELD_LABELS = { nickname: 'あだ名', ageGroup: '年代', identificationNote: '見分け方', favoriteDrink: '好きなお酒', memo: 'メモ' };
+
+  /** 共通メモ: オーナー・スタッフは編集、キャストは閲覧のみ（サーバーでも判定） */
+  function sharedMemoCard(c, perm) {
+    if (!perm.editShared) {
+      var row = function (label, v) { return h('div', { className: 'field' }, h('label', null, label), h('div', { className: 'pre' }, v || '—')); };
+      return card('お客様の情報（共通）', [
+        row('年代', c.ageGroup ? LABELS.age[c.ageGroup] || c.ageGroup : ''),
+        row('見分け方', c.identificationNote),
+        row('好きなお酒', c.favoriteDrink),
+        row('メモ', c.memo),
+        h('p', { className: 'hint' }, 'この欄はオーナー・スタッフが編集します。')
+      ]);
+    }
+    var nick = h('input', { type: 'text', maxlength: String(state.constraints.nicknameMaxLength), value: c.nickname, disabled: !perm.editNickname });
+    var age = selectEl(Object.keys(LABELS.age).map(function (k) { return { value: k, label: LABELS.age[k] }; }), c.ageGroup || '');
+    var ident = h('input', { type: 'text', maxlength: '50', value: c.identificationNote, placeholder: '例: 眼鏡、背が高い' });
+    var drink = h('input', { type: 'text', maxlength: '50', value: c.favoriteDrink, placeholder: '例: ハイボール' });
+    var memo = h('textarea', { rows: '4', maxlength: '500' });
+    memo.value = c.memo;
+    var errorsEl = h('ul', { className: 'form-errors', hidden: true });
+    var save = h('button', { type: 'button', className: 'btn primary' }, '保存する');
+    save.addEventListener('click', function () {
+      if (perm.editNickname && !nick.value.trim()) { toast('あだ名を入力してください。', true); return; }
+      errorsEl.hidden = true;
+      errorsEl.textContent = '';
+      save.disabled = true;
+      var input = { ageGroup: age.value, identificationNote: ident.value, favoriteDrink: drink.value, memo: memo.value };
+      if (perm.editNickname) input.nickname = nick.value;
+      api('staff.updateCustomer', { customerId: c.customerId, expectedUpdatedAt: c.updatedAt, customer: input }, {
+        onError: function (err) {
+          if (err.code !== 'VALIDATION_ERROR' || !err.fields) return false;
+          Object.keys(err.fields).forEach(function (k) {
+            var m = { required: '入力してください。', too_long: '長すぎます。', invalid_chars: '使えない文字が含まれています。' }[err.fields[k]] || '値を確認してください。';
+            errorsEl.appendChild(h('li', null, (CUSTOMER_FIELD_LABELS[k] || k) + ': ' + m));
+          });
+          errorsEl.hidden = false;
+          return true;
+        }
+      }).then(function (r) {
+        save.disabled = false;
+        if (!r) return;
+        state.customers = null; // 予約・来店の顧客選択にも新しいあだ名を反映
+        toast('保存しました。');
+        renderPanel();
+      });
+    });
+    return card('お客様の情報（共通）', [
+      fieldEl('あだ名', nick, perm.editNickname ? null : 'あだ名の変更はオーナーのみです。'),
+      fieldEl('年代', age),
+      fieldEl('見分け方', ident),
+      fieldEl('好きなお酒', drink),
+      fieldEl('メモ', memo, '従業員全員が見られます。電話番号・本名・住所などは書かないでください。'),
+      errorsEl,
+      save
+    ]);
+  }
+
+  /** 個人メモ: 店舗用画面では本人だけが見られる */
+  function myNoteCard(customerId, note) {
+    var text = h('textarea', { rows: '4', maxlength: '500', placeholder: '自分用のメモ（他の従業員の画面には表示されません）' });
+    text.value = note.body;
+    var version = note.version;
+    var save = h('button', { type: 'button', className: 'btn primary' }, '保存する');
+    save.addEventListener('click', function () {
+      save.disabled = true;
+      api('staff.saveCustomerNote', { customerId: customerId, body: text.value, expectedVersion: version }).then(function (r) {
+        save.disabled = false;
+        if (!r) return;
+        version = r.note.version;
+        text.value = r.note.body;
+        toast('保存しました。');
+      });
+    });
+    return card('自分用メモ', [
+      text,
+      h('p', { className: 'hint' }, '店舗用画面では、あなただけに表示されます。電話番号・本名・住所などは書かないでください。'),
+      save
+    ]);
   }
 
   // ---------- ユーザー管理 ----------

@@ -15,6 +15,10 @@ function staffActions_() {
   return {
     'staff.me':                { roles: ALL,         write: false, handler: staffMe_ },
     'staff.listCustomers':     { roles: ALL,         write: false, handler: staffListCustomers_ },
+    'staff.listCustomerProfiles': { roles: ALL,      write: false, handler: staffListCustomerProfiles_ },
+    'staff.getCustomer':       { roles: ALL,         write: false, handler: staffGetCustomer_ },
+    'staff.updateCustomer':    { roles: OWNER_STAFF, write: true,  handler: staffUpdateCustomer_ },
+    'staff.saveCustomerNote':  { roles: ALL,         write: true,  handler: staffSaveCustomerNote_ },
     'staff.listReservations':  { roles: ALL,         write: false, handler: staffListReservations_ },
     'staff.createReservation': { roles: ALL,         write: true,  handler: staffCreateReservation_ },
     'staff.listVisits':        { roles: ALL,         write: false, handler: staffListVisits_ },

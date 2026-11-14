@@ -124,3 +124,8 @@
 .form-errors { color: var(--error); padding-left: 1.2em; margin: 8px 0; }
 .role-changer { display: inline-flex; gap: 4px; align-items: center; }
 .role-changer select { padding: 4px; }
+
+/* 顧客タブ */
+.list li.clickable { cursor: pointer; }
+.list li.clickable:active { background: rgba(127,127,127,.12); }
+.pre { white-space: pre-wrap; word-break: break-word; }

@@ -31,6 +31,10 @@ var SCHEMAS = {
   Invites: [
     'invite_id', 'user_id', 'code_hash', 'expires_at', 'used_at', 'created_by', 'created_at'
   ],
+  // 従業員ごとの個人メモ（顧客1人×従業員1人につき1行）。本人だけが画面で見られる
+  CustomerNotes: [
+    'note_id', 'customer_id', 'user_id', 'body', 'created_at', 'updated_at', 'version'
+  ],
   AuditLogs: [
     'log_id', 'timestamp', 'user_id', 'role', 'action', 'target_type', 'target_id',
     'before_json', 'after_json', 'reason', 'request_id', 'result'
@@ -43,10 +47,23 @@ function getSpreadsheet_() {
   return ss;
 }
 
+/** 後から追加したシート。無ければ初回アクセス時に作る（setupSheets の再実行を不要にする）。 */
+var AUTO_CREATE_TABLES = ['CustomerNotes'];
+
+function createSheetWithHeader_(ss, name) {
+  var schema = SCHEMAS[name];
+  var sheet = ss.insertSheet(name);
+  sheet.getRange(1, 1, 1, schema.length).setValues([schema]).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
 function getTable_(name) {
   var schema = SCHEMAS[name];
   if (!schema) throw new Error('Unknown table: ' + name);
-  var sheet = getSpreadsheet_().getSheetByName(name);
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(name);
+  if (!sheet && AUTO_CREATE_TABLES.indexOf(name) >= 0) sheet = createSheetWithHeader_(ss, name);
   if (!sheet) throw new Error('Sheet not found: ' + name + '. Run setupSheets().');
   return { sheet: sheet, schema: schema };
 }
