@@ -129,10 +129,15 @@
     var c = state.options.constraints;
 
     var today = jstBusinessToday(c.businessDayCutoffHour);
-    var dateInput = $('visit-date');
-    dateInput.min = today;
-    dateInput.max = addDays(today, c.maxDaysAhead);
-    if (!dateInput.value) dateInput.value = today;
+    // ご来店日は選択式（iPhone の日付入力は枠からはみ出すことがあるため使わない）
+    var dateSelect = $('visit-date');
+    var previous = dateSelect.value;
+    dateSelect.textContent = '';
+    for (var d = 0; d <= c.maxDaysAhead; d++) {
+      var ds = addDays(today, d);
+      dateSelect.appendChild(option(ds, formatDateJa(ds).replace(/^\d+年/, '') + (d === 0 ? '（本日）' : d === 1 ? '（明日）' : '')));
+    }
+    dateSelect.value = previous && previous >= today && previous <= addDays(today, c.maxDaysAhead) ? previous : today;
 
     var timeSelect = $('visit-time');
     timeSelect.textContent = '';
@@ -192,7 +197,7 @@
       var t = time.split(':').map(Number);
       var at = Date.UTC(p[0], p[1] - 1, p[2], t[0], t[1]) - JST_OFFSET_MS;
       if (at <= Date.now()) errors.scheduledAt = '過去の日時は選択できません。';
-      else if (visitDate > $('visit-date').max) errors.scheduledAt = c.maxDaysAhead + '日先までご予約いただけます。';
+      else if (visitDate > addDays(jstBusinessToday(c.businessDayCutoffHour), c.maxDaysAhead)) errors.scheduledAt = c.maxDaysAhead + '日先までご予約いただけます。';
     }
 
     var note = $('note').value.trim();
