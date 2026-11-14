@@ -65,6 +65,23 @@ input, select, textarea {
   font-family: inherit;
 }
 
+/*
+ * iOS（LINE内ブラウザ含む）の日付・時刻入力は、標準の見た目のままだと
+ * width: 100% より内部の最小幅が優先され、枠からはみ出す。見た目を解除して幅に収める。
+ * 値が空のときに高さが潰れるのも min-height で防ぐ。
+ */
+input[type="date"], input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 50px;
+  line-height: 1.5;
+}
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+
 input:focus, select:focus, textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

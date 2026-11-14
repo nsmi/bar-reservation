@@ -8,7 +8,7 @@
   margin-bottom: 12px;
 }
 .date-bar label { margin: 0; white-space: nowrap; }
-.date-bar input { flex: 1; min-width: 0; padding: 8px; }
+.date-bar input { flex: 1; min-width: 0; padding: 8px; min-height: 40px; }
 
 .btn.small {
   display: inline-block;
