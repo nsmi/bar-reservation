@@ -9,6 +9,6 @@ window.APP_CONFIG = Object.freeze({
   SHOP_NAME: 'Bar予約システム',
   // 公式LINEアカウントの友だち追加URL（https://lin.ee/… など。公開してよい値）。
   // 「友だち限定」を設定タブでオンにしたとき、友だちでないお客様に表示する。空ならボタンを出さない
-  FRIEND_ADD_URL: ''
+  FRIEND_ADD_URL: 'https://lin.ee/TopHHQI'
   // 予約の受付時間・人数などは、店舗用画面の「設定」タブで変更する（サーバーから取得）
 });
